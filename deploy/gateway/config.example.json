@@ -1,0 +1,36 @@
+{
+  "publicOrigin": "https://workbench.example.com",
+  "stateDir": "/home/workbench/.local/state/remote-workbench",
+  "host": "127.0.0.1",
+  "port": 4080,
+  "trustedProxyIps": ["127.0.0.1"],
+  "secureCookies": true,
+  "staticDir": "/opt/remote-workbench/apps/web/dist",
+  "owner": {
+    "id": "owner",
+    "username": "owner",
+    "passwordHash": "REPLACE_WITH_HASH_FROM_SETUP"
+  },
+  "profiles": [
+    {
+      "id": "office-alice",
+      "ownerId": "owner",
+      "label": "Office · alice",
+      "tokenFile": "/home/workbench/.config/remote-workbench/secrets/office-alice.token",
+      "expectedIdentity": {
+        "uid": 1001,
+        "username": "alice",
+        "home": "/home/alice"
+      },
+      "transport": {
+        "kind": "ssh",
+        "host": "office.example.com",
+        "port": 22,
+        "user": "alice",
+        "identityFile": "/home/workbench/.ssh/remote-workbench-office",
+        "knownHostsFile": "/home/workbench/.config/remote-workbench/known_hosts",
+        "remoteSocketPath": "/run/user/1001/remote-workbench/agent.sock"
+      }
+    }
+  ]
+}

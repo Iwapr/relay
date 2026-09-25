@@ -1,0 +1,47 @@
+.tool-history {
+  margin: 6px 0 12px;
+  color: #617080;
+  font-size: 12px;
+  min-width: 0;
+}
+.tool-history > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  min-height: 36px;
+  border-radius: 6px;
+}
+.tool-history > summary::-webkit-details-marker {
+  display: none;
+}
+.tool-history > summary:hover {
+  background: #ffffff80;
+}
+.tool-history > summary:focus-visible {
+  outline: 2px solid #2563a6;
+  outline-offset: 2px;
+}
+.tool-history > summary svg {
+  flex-shrink: 0;
+}
+.tool-history[open] > summary .tool-history-chevron {
+  transform: rotate(90deg);
+}
+.tool-history-action {
+  margin-left: auto;
+  padding-right: 6px;
+}
+.tool-history-records {
+  padding-left: 12px;
+  border-left: 1px solid var(--reply-border, #e0e6ed);
+}
+.tool-history .tool-message summary {
+  overflow-wrap: anywhere;
+  min-height: 32px;
+}
+.tool-history .tool-message pre {
+  max-height: 320px;
+  overflow: auto;
+}

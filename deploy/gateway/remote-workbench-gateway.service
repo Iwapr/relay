@@ -1,0 +1,19 @@
+# Template; generate exact paths with scripts/install-service.ts.
+[Unit]
+Description=Remote Workbench Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/remote-workbench
+Environment=GATEWAY_CONFIG=/home/workbench/.config/remote-workbench/gateway.json
+ExecStart=/opt/node24/bin/node --import tsx /opt/remote-workbench/apps/gateway/src/main.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=false
+
+[Install]
+WantedBy=default.target

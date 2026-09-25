@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+[[ -x node_modules/node/bin/node ]] || { echo '请先执行 ./install.sh'; exit 1; }
+export PATH="$PWD/node_modules/node/bin:$PATH"
+exec node_modules/node/bin/node --import tsx scripts/control.ts "$@"

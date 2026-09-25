@@ -1,0 +1,64 @@
+.image-attachments,
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+}
+.image-attachments {
+  max-height: 190px;
+  overflow-y: auto;
+}
+.image-attachment {
+  position: relative;
+  width: 100px;
+  min-width: 0;
+  font-size: 11px;
+}
+.image-attachment img {
+  width: 100px;
+  height: 72px;
+  object-fit: contain;
+  background: #edf1f5;
+  border-radius: 7px;
+}
+.image-attachment button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: #fff;
+  padding: 5px;
+  border-radius: 50%;
+}
+.image-attachment span {
+  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.image-attachment small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.image-attachment [role='alert'] {
+  color: #a02c2c;
+}
+.message-images {
+  justify-content: flex-end;
+}
+.message-images img {
+  width: 128px;
+  height: 100px;
+  max-width: 100%;
+  object-fit: contain;
+  border: 1px solid #dce3e8;
+  border-radius: 8px;
+  background: #fff;
+}
+.attach-image-button {
+  width: 34px;
+  height: 34px;
+  padding: 5px;
+  display: grid;
+  place-items: center;
+}

@@ -1,0 +1,15 @@
+node_modules/
+apps/web/dist/
+.runtime/
+playwright-report/
+test-results/
+*.sqlite*
+.env
+.env.*
+!.env.example
+*.local.json
+artifacts/
+.test-workspaces/
+
+__pycache__/
+*.pyc

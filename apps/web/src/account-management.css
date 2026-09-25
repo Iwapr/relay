@@ -1,0 +1,329 @@
+.modal.account-modal {
+  width: min(900px, calc(100vw - 32px));
+  max-width: 900px;
+  padding: 0;
+  overflow: auto;
+}
+.modal.account-modal > .modal-title {
+  padding: 24px 28px 18px;
+  margin: 0;
+}
+.modal.account-modal .modal-title h2 {
+  font-size: 22px;
+  letter-spacing: -0.5px;
+}
+.modal.account-modal .modal-title p {
+  margin-top: 6px;
+}
+.account-tabs {
+  display: flex;
+  gap: 24px;
+  padding: 0 28px;
+  border-bottom: 1px solid #e5e8ed;
+}
+.account-tabs button {
+  padding: 13px 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #707887;
+  font-weight: 600;
+}
+.account-tabs button[aria-selected='true'] {
+  color: #253f3b;
+  border-bottom-color: #357d6d;
+}
+.account-tabs button span {
+  padding: 2px 6px;
+  margin-left: 5px;
+  border-radius: 5px;
+  background: #edf1ef;
+  font-size: 11px;
+}
+.account-ai-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 310px) minmax(0, 1fr);
+}
+.account-catalog {
+  background: #f7f8fa;
+  border-right: 1px solid #e5e8ed;
+  padding: 22px;
+  min-width: 0;
+}
+.account-section-heading h3 {
+  margin: 0 0 5px;
+  font-size: 14px;
+}
+.account-section-heading small {
+  color: #7b8290;
+  font-size: 11px;
+}
+.account-profile-list {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 24px;
+}
+.account-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 10px;
+  min-width: 0;
+}
+.account-profile-card.selected {
+  background: white;
+  border-color: #b6cec6;
+  box-shadow: 0 2px 6px #233d3510;
+}
+.account-profile-card > svg {
+  flex-shrink: 0;
+  color: #357d6d;
+}
+.account-provider-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: #356f61;
+  background: #e4eeea;
+  font-size: 21px;
+}
+.account-provider-icon.kimi {
+  color: #494fc6;
+  background: #e9eafb;
+  font-size: 19px;
+  font-weight: 700;
+}
+.account-profile-text {
+  min-width: 0;
+  flex: 1;
+}
+.account-profile-text strong,
+.account-profile-text small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.account-profile-text strong {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.account-profile-text small {
+  font-size: 11px;
+  color: #727b89;
+}
+.account-create {
+  border-top: 1px solid #e2e6eb;
+  padding-top: 18px;
+}
+.account-create summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.account-create .account-add {
+  display: grid;
+  grid-template-columns: 1fr;
+  margin-bottom: 8px;
+}
+.account-create .account-add input,
+.account-create .account-add select {
+  width: 100%;
+  box-sizing: border-box;
+  background: white;
+}
+.account-create .account-add button {
+  width: 100%;
+  background: #344f48;
+  color: white;
+  border-color: #344f48;
+}
+.account-detail {
+  padding: 4px 26px 24px;
+  min-width: 0;
+}
+.account-detail .account-section {
+  margin: 0;
+  padding: 22px 0;
+}
+.account-detail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.account-detail-heading h3 {
+  font-size: 19px;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+.account-eyebrow {
+  font-size: 11px;
+  color: #7b8290;
+}
+.account-auth-badge {
+  font-size: 11px;
+  background: #f0f1f4;
+  color: #727b89;
+  padding: 5px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.account-auth-badge.ready {
+  background: #e9f3ed;
+  color: #35735c;
+}
+.modal.account-modal dl {
+  font-size: 12px;
+}
+.modal.account-modal dd {
+  overflow-wrap: anywhere;
+}
+.modal.account-modal .quota-window {
+  background: #f7f9f8;
+  padding: 13px;
+  border-radius: 9px;
+  margin-top: 12px;
+}
+.account-danger-zone {
+  padding-top: 20px;
+  border-top: 1px solid #e8eaee;
+}
+.account-danger-zone h3 {
+  font-size: 12px;
+  margin: 0;
+}
+.account-danger-zone p {
+  font-size: 11px;
+  line-height: 1.7;
+  color: #7b8290;
+}
+.modal.account-modal button.danger {
+  color: #b03b3b;
+  border-color: #ead0d0;
+  background: #fffafa;
+}
+.account-delete-confirm {
+  border: 1px solid #ead0d0;
+  border-radius: 9px;
+  padding: 14px;
+  background: #fffafa;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.account-delete-confirm > div {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.account-server-layout {
+  padding: 8px 28px 24px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 32px;
+}
+.account-server-layout .account-section {
+  border-bottom: 0;
+}
+.modal.account-modal .modal-footer {
+  margin: 0;
+  padding: 16px 28px;
+  border-top: 1px solid #e5e8ed;
+  background: #fafbfc;
+}
+.account-error {
+  margin: 12px 24px 0;
+}
+@media (max-width: 640px) {
+  .modal.account-modal {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 24px);
+  }
+  .modal.account-modal > .modal-title {
+    padding: 18px 18px 12px;
+  }
+  .account-tabs {
+    padding: 0 18px;
+  }
+  .account-ai-layout,
+  .account-server-layout {
+    grid-template-columns: 1fr;
+  }
+  .account-catalog {
+    padding: 18px;
+    border-right: 0;
+    border-bottom: 1px solid #e5e8ed;
+  }
+  .account-profile-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 12px 0 16px;
+  }
+  .account-profile-card {
+    padding: 9px;
+    gap: 7px;
+  }
+  .account-profile-card > svg {
+    display: none;
+  }
+  .account-create .account-add {
+    grid-template-columns: 100px minmax(0, 1fr);
+  }
+  .account-create .account-add button {
+    grid-column: 1 / -1;
+  }
+  .account-detail {
+    padding: 0 18px 20px;
+  }
+  .account-server-layout {
+    padding: 0 18px 16px;
+    gap: 0;
+  }
+  .modal.account-modal .modal-footer {
+    padding: 12px 18px;
+  }
+}
+.modal.account-modal > .modal-title {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 102px;
+  box-sizing: border-box;
+  background: white;
+}
+.modal.account-modal .account-tabs {
+  position: sticky;
+  top: 102px;
+  z-index: 2;
+  background: white;
+}
+.modal.account-modal .account-detail-heading h3 {
+  font-size: 19px;
+  color: #263c36;
+  margin: 4px 0 0;
+}
+.modal.account-modal .account-detail > .account-section:first-child {
+  border-top: 0;
+}
+@media (max-width: 640px) {
+  .modal.account-modal > .modal-title {
+    height: 88px;
+  }
+  .modal.account-modal .account-tabs {
+    top: 88px;
+  }
+  .account-create .account-add {
+    grid-template-columns: 118px minmax(0, 1fr);
+  }
+  .modal.account-modal button,
+  .modal.account-modal select {
+    scroll-margin-top: 142px;
+  }
+}

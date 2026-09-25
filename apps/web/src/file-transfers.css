@@ -1,0 +1,137 @@
+.file-transfer-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px 0;
+}
+.file-transfer-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 6px;
+}
+.file-selection-tools {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.file-selection-tools label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+.file-transfer-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.file-transfer-row > input,
+.file-selection-tools input {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.file-transfer-row .file-entry {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.file-transfer-status {
+  width: 100%;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.file-transfer-tools progress {
+  width: 100%;
+  height: 6px;
+}
+.file-transfer-errors {
+  color: #a33;
+  max-height: 110px;
+  overflow: auto;
+  width: 100%;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.file-transfer-errors p {
+  margin: 3px 0;
+}
+@media (max-width: 760px) {
+  .file-transfer-tools button {
+    min-height: 36px;
+    font-size: 12px;
+  }
+}
+.file-main-tools {
+  display: flex;
+  width: 100%;
+  gap: 8px;
+}
+.file-main-tools button {
+  flex: 1;
+  justify-content: center;
+}
+.file-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+.file-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.file-management-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+}
+.file-management-actions button {
+  flex: 1;
+  padding: 8px 2px;
+}
+.file-operation {
+  width: min(480px, 100%);
+  max-height: 85dvh;
+  overflow: auto;
+}
+.file-operation input {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+}
+.file-operation-path {
+  overflow-wrap: anywhere;
+  max-height: 120px;
+  overflow: auto;
+}
+.file-destination-list {
+  max-height: 40dvh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+@media (max-width: 760px) {
+  .file-transfer-tools button,
+  .file-management-actions button,
+  .file-operation button,
+  .file-transfer-row .file-entry {
+    min-height: 44px;
+  }
+  .file-operation {
+    align-self: end;
+    margin: 0;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}

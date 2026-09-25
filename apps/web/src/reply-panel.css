@@ -1,0 +1,79 @@
+.reply-panel {
+  --reply-accent: #64748b;
+  --reply-background: #f5f7f9;
+  --reply-border: #e0e6ed;
+  margin-top: 14px;
+  padding: 14px 16px 10px;
+  border: 1px solid var(--reply-border);
+  border-left: 4px solid var(--reply-accent);
+  border-radius: 12px;
+  background: var(--reply-background);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.reply-starting,
+.reply-running {
+  --reply-accent: #2563a6;
+  --reply-background: #f0f6ff;
+  --reply-border: #c8dcf5;
+}
+.reply-completed {
+  --reply-accent: #397558;
+  --reply-background: #f3f9f5;
+  --reply-border: #d1e5d8;
+}
+.reply-waiting_approval,
+.reply-waiting_input,
+.reply-uncertain,
+.reply-cancelling {
+  --reply-accent: #946011;
+  --reply-background: #fff8e9;
+  --reply-border: #eed7a9;
+}
+.reply-failed,
+.reply-interrupted {
+  --reply-accent: #b13c3c;
+  --reply-background: #fff3f2;
+  --reply-border: #f1cccc;
+}
+.chat-panel .reply-panel > .run-label {
+  margin: 0 0 10px;
+  gap: 7px;
+  font-size: 11px;
+}
+.reply-panel .run-label strong {
+  font-size: 13px;
+  color: #34433c;
+}
+.reply-panel .run-label .run-status {
+  background: transparent;
+  color: var(--reply-accent);
+  font-size: 12px;
+  font-weight: 650;
+  padding: 3px 0 3px 6px;
+}
+.reply-state-hint {
+  margin: 0 0 12px;
+  color: var(--reply-accent);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.reply-panel .assistant-message > :last-child {
+  margin-bottom: 4px;
+}
+.reply-panel .tool-message {
+  background: #ffffffad;
+}
+.reply-model {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .reply-panel {
+    padding: 12px 11px 9px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reply-panel .spin {
+    animation: none;
+  }
+}

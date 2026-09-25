@@ -1,0 +1,153 @@
+.shared-session-toolbar,
+.shared-session-meta,
+.shared-session-project {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shared-session-toolbar {
+  justify-content: space-between;
+  margin: 20px 0 10px;
+  color: #7d8994;
+  font-size: 11px;
+}
+.shared-session-toolbar button,
+.shared-session-list button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: 11px;
+  min-height: 36px;
+}
+.shared-session-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.shared-session-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.shared-session-list li > div {
+  min-width: 0;
+}
+.shared-session-list strong {
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.shared-session-meta {
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: #7d8994;
+}
+.shared-session-empty {
+  padding: 24px 0;
+  color: #7d8994;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.shared-session-project {
+  margin-top: 7px;
+  color: #7b8c80;
+  font-size: 11px;
+  min-width: 0;
+}
+.shared-session-project svg {
+  flex-shrink: 0;
+}
+.shared-session-project span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shared-session-scopes {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: #f1f4f2;
+  border-radius: 9px;
+}
+.shared-session-scopes button {
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: #829087;
+  border-radius: 6px;
+}
+.shared-session-scopes button[aria-pressed='true'] {
+  background: white;
+  color: #425d4c;
+  box-shadow: 0 1px 4px #29413312;
+}
+.shared-history-error {
+  margin-bottom: 12px;
+}
+.shared-sessions.modal {
+  width: 620px;
+}
+.shared-sessions .modal-title h2 {
+  font-size: 18px;
+}
+.shared-sessions .modal-title > button {
+  min-width: 36px;
+  min-height: 36px;
+}
+@media (max-width: 760px) {
+  .shared-sessions.modal {
+    padding: 18px;
+  }
+  .shared-session-toolbar {
+    gap: 8px;
+  }
+  .shared-session-scopes button {
+    padding-inline: 8px;
+  }
+}
+
+.shared-session-list li > div {
+  grid-column: 1;
+  grid-row: 1 / 3;
+}
+.shared-session-list .rename-conversation-trigger,
+.shared-session-list .shared-session-open {
+  grid-column: 2;
+  justify-self: center;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 6px;
+}
+.shared-session-list .rename-conversation-trigger {
+  grid-row: 1;
+  align-self: end;
+}
+.shared-session-list .shared-session-open {
+  width: 48px;
+  grid-row: 2;
+  align-self: start;
+}
+.shared-session-list .rename-conversation {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  width: 100%;
+  margin-top: 8px;
+}
+.shared-session-list .rename-conversation input {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+.shared-session-list .rename-conversation > div {
+  flex-wrap: wrap;
+}

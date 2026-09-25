@@ -1,0 +1,72 @@
+.question-card {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid #d4dfeb;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+}
+.question-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.question-card fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 14px;
+  min-width: 0;
+}
+.question-card legend {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 9px;
+}
+.question-options button {
+  text-align: left;
+  justify-content: flex-start;
+  white-space: normal;
+  min-height: 42px;
+  padding: 9px 12px;
+  line-height: 1.5;
+}
+.question-options button.selected {
+  border-color: #397558;
+  color: #28583f;
+  background: #edf7f0;
+  box-shadow: inset 3px 0 #397558;
+}
+.question-card textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+  padding: 10px;
+  border: 1px solid #d5dee7;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 14px;
+}
+.question-card > button {
+  min-height: 40px;
+}
+.question-sent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #397558;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .question-card textarea {
+    font-size: 16px;
+  }
+}

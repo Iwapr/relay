@@ -1,0 +1,38 @@
+.preview-content.html-content {
+  padding: 0;
+  overflow: hidden;
+}
+.html-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.html-preview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.html-preview-toolbar button[aria-pressed='true'] {
+  background: #e8f2ef;
+  color: #246654;
+}
+.html-preview-toolbar span {
+  font-size: 12px;
+  color: #687681;
+}
+.html-preview iframe {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  background: white;
+}
+.html-preview-source {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

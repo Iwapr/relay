@@ -1,0 +1,16 @@
+{
+  "stateDir": "/home/alice/.local/state/remote-workbench",
+  "socketPath": "/run/user/1001/remote-workbench/agent.sock",
+  "tokenFile": "/home/alice/.config/remote-workbench/agent.token",
+  "roots": [
+    "/home/alice/projects"
+  ],
+  "codexExecutable": "/home/alice/.local/bin/codex",
+  "maxProviders": 4,
+  "maxPreviewBytes": 52428800,
+  "taskUmask": "0022",
+  "sensitivePaths": [
+    "/home/USER/.config/remote-workbench",
+    "/home/USER/.local/share/remote-workbench"
+  ]
+}

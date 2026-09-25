@@ -1,0 +1,135 @@
+.remote-modal {
+  width: min(780px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  box-sizing: border-box;
+  border: 1px solid #e2e7e5;
+  border-radius: 16px;
+  padding: 26px;
+  color: #273b37;
+  background: #fff;
+  overflow-y: auto;
+  box-shadow: 0 24px 80px #162c3830;
+}
+.remote-modal::backdrop {
+  background: #142b3a65;
+}
+.remote-modal h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+}
+.remote-modal p {
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  margin: 10px 0;
+}
+.remote-modal section {
+  margin: 22px 0;
+}
+.remote-modal h3 {
+  font-size: 15px;
+  margin: 14px 0;
+}
+.remote-modal h4 {
+  font-size: 14px;
+  margin: 18px 0 8px;
+}
+.remote-modal button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.remote-modal fieldset {
+  border: 0;
+  padding: 0;
+  margin: 18px 0 0;
+  min-width: 0;
+}
+.remote-summary {
+  background: #f1f6f4;
+  border: 1px solid #dce8e2;
+  padding: 15px;
+  border-radius: 10px;
+}
+.remote-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 18px 0;
+}
+.remote-fields label {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+}
+.remote-fields input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.remote-modal .remote-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.remote-toggle input {
+  width: 17px;
+  height: 17px;
+  accent-color: #357d6d;
+}
+.remote-modal details {
+  margin-top: 16px;
+  font-size: 13px;
+}
+.remote-modal summary {
+  cursor: pointer;
+}
+.remote-command {
+  margin: 12px 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f5f7f8;
+  border: 1px solid #e0e5e8;
+}
+.remote-command textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
+  border: 0;
+  background: transparent;
+  margin-top: 9px;
+  font: 12px/1.6 monospace;
+  white-space: pre;
+  overflow: auto;
+}
+.remote-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+.remote-actions span,
+.remote-note {
+  font-size: 12px;
+  color: #6c7975;
+}
+.remote-success {
+  color: #23644b;
+}
+@media (max-width: 600px) {
+  .remote-modal {
+    padding: 18px;
+  }
+  .remote-fields {
+    grid-template-columns: 1fr;
+  }
+  .remote-actions {
+    align-items: start;
+    flex-direction: column;
+  }
+}

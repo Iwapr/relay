@@ -1,0 +1,21 @@
+# Template for the real target Linux user's systemd --user manager.
+# Generate exact paths with scripts/install-service.ts. This never runs `su`.
+[Unit]
+Description=Remote Workbench Workspace Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/remote-workbench
+Environment=AGENT_CONFIG=/home/alice/.config/remote-workbench/agent.json
+ExecStart=/opt/node24/bin/node --import tsx /opt/remote-workbench/apps/agent/src/main.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+KillMode=mixed
+UMask=0077
+NoNewPrivileges=false
+
+[Install]
+WantedBy=default.target

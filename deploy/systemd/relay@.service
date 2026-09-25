@@ -1,0 +1,26 @@
+# Managed by Relay template service.
+[Unit]
+Description=Relay workbench for %i
+PartOf=relay.service
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=notify
+NotifyAccess=all
+User=%i
+WorkingDirectory=/
+ExecStartPre=+/usr/local/libexec/relay-service prepare %i
+ExecStart=/usr/local/libexec/relay-service run %i
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=900
+TimeoutStopSec=45
+KillMode=mixed
+UMask=0077
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target

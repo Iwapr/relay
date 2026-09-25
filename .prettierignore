@@ -1,0 +1,7 @@
+node_modules
+.runtime
+generated
+apps/web/dist
+package-lock.json
+docs/openapi.json
+plan.md
