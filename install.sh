@@ -18,6 +18,7 @@ fi
 # A repeated install never replaces dependencies beneath a running instance.
 if [[ -f .runtime/agent.json && -f .runtime/gateway.json ]]; then
   echo 'Relay 已初始化，保留现有配置与依赖。使用 ./relay status 或 ./relay start。'
+  echo '查看关闭、重启和日志等管理命令：./relay help'
   echo '升级步骤见 docs/quickstart.md。'
   exit 0
 fi

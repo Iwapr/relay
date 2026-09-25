@@ -57,9 +57,11 @@ cd relay
 
 ```bash
 ./relay info       # 地址、账号和密码
+./relay help       # 查看关闭、重启等完整管理说明
 ./relay status     # 查看状态
 ./relay start      # 启动
 ./relay stop       # 停止后台服务
+./relay restart    # 重启后台服务（先等任务结束）
 ./relay logs       # 后台服务日志
 ```
 

@@ -1,3 +1,4 @@
+import { managementHelp } from './management-help.ts';
 import { spawn } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -47,8 +48,13 @@ async function managedServices() {
   return installed === 2;
 }
 async function main() {
+  if (['help', '--help', '-h'].includes(command)) {
+    const mode = (await readFile(join(runtime, 'install-mode'), 'utf8').catch(() => '')).trim();
+    console.log(managementHelp(mode === 'systemd' || mode === 'foreground' ? mode : 'unknown'));
+    return;
+  }
   if (!['start', 'stop', 'restart', 'status', 'logs', 'info', 'service'].includes(command))
-    throw new Error('用法：./relay start|stop|restart|status|logs|info|service');
+    throw new Error('用法：./relay start|stop|restart|status|logs|info|service|help');
   const config = JSON.parse(
     await readFile(join(runtime, 'gateway.json'), 'utf8').catch(() => {
       throw new Error('请先运行 ./install.sh');
@@ -80,7 +86,7 @@ async function main() {
         '--start',
       ]);
     await writeFile(join(runtime, 'install-mode'), 'systemd\n', { mode: 0o600 });
-    console.log('后台服务已安装。使用 ./relay status 查看状态。');
+    console.log('后台服务已安装。\n\n' + managementHelp('systemd'));
     return;
   }
   const mode = await readFile(join(runtime, 'install-mode'), 'utf8').catch(() => '');

@@ -1,3 +1,4 @@
+import { managementHelp } from './management-help.ts';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { access, readFile, mkdir, stat, writeFile } from 'node:fs/promises';
@@ -183,6 +184,7 @@ async function main() {
   console.log(
     `\n${systemd ? 'Relay 已在后台启动。' : '安装完成。运行 ./relay start 前台启动，保持终端开启。'}\n访问地址：http://${host}:${port}\n登录账号：owner\n查看随机密码：./relay info\n首次使用：右上角菜单 → 账号管理 → 添加账号并授权。`,
   );
+  console.log('\n' + managementHelp(systemd ? 'systemd' : 'foreground'));
   if (systemd) {
     let linger = false;
     try {

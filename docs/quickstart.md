@@ -24,6 +24,8 @@ sudo apt-get install -y git python3 curl xz-utils ca-certificates util-linux
 
 项目数据、私有工具和下载缓存都位于 `.runtime`；依赖位于 `node_modules`。源码、工具、配置和服务使用当前普通用户，不自动执行 sudo，也不修改系统防火墙或公开公网端口。
 
+安装完成后，终端会显示访问地址及对应运行模式的启动、关闭、重启和日志操作。随时可用 `./relay help` 再次查看。
+
 终端显示访问地址。执行 `./relay info` 查看网站账号密码。登录后，在右上角「账号管理」添加并授权自己的 AI 账号；无需先手动运行 Codex 登录。默认项目允许根目录是当前用户的 home，敏感目录仍拒绝访问。
 
 ## 退出终端后继续运行
@@ -64,6 +66,7 @@ sudo loginctl enable-linger "$(id -un)"
 
 | 命令              | 用途                                     |
 | ----------------- | ---------------------------------------- |
+| `./relay help`    | 显示当前运行模式的管理命令               |
 | `./relay info`    | 显示地址、账号、密码；请勿公开输出       |
 | `./relay status`  | 查看当前项目服务状态                     |
 | `./relay start`   | 启动已安装的后台服务；未安装则前台运行   |
