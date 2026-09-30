@@ -32,6 +32,7 @@ export interface RemoteStatus {
   reason?: string;
   enabled: boolean;
   localOrigin: string;
+  gatewayPort: number;
   remoteOrigin?: string;
   proxyOrigin?: string;
   relay?: CloudRelay;

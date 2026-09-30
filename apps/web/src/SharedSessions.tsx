@@ -28,14 +28,23 @@ export function SharedSessions({
   onRenamed,
   onClose,
 }: {
-  provider?: 'codex' | 'kimi' | 'claude';
+  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek';
   connection: string;
   workspaceId?: string;
   onSelect: (conversation: Conversation, workspace: Workspace) => void;
   onClose: () => void;
   onRenamed: (conversation: Conversation) => void;
 }) {
-  const title = provider === 'claude' ? 'Claude 会话' : provider === 'kimi' ? 'Kimi 会话' : 'Codex 会话';
+  const title =
+    provider === 'deepseek'
+      ? 'DeepSeek（测试）会话'
+      : provider === 'antigravity'
+        ? 'Gemini（测试）会话'
+        : provider === 'claude'
+          ? 'Claude 会话'
+          : provider === 'kimi'
+            ? 'Kimi 会话'
+            : 'Codex 会话';
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [sessions, setSessions] = useState<NativeSessionSummary[]>([]),
     [cursor, setCursor] = useState<string | null>(null),
@@ -50,11 +59,11 @@ export function SharedSessions({
   close.current = onClose;
   const endpoint =
     base(connection) +
-    (provider !== 'codex'
+    (provider !== 'codex' && provider !== 'antigravity'
       ? '/snapshot?view=summary'
       : workspaceId
         ? `/workspaces/${workspaceId}/native-sessions`
-        : '/providers/codex/sessions');
+        : `/providers/${provider}/sessions`);
 
   const load = async (nextCursor?: string) => {
     listRequest.current?.abort();
@@ -68,7 +77,7 @@ export function SharedSessions({
       if (workspaceId && scope === 'all') query.set('scope', 'all');
       const [local, native] = await Promise.allSettled([
         api<Snapshot>(base(connection) + '/snapshot?view=summary', undefined, abort.signal),
-        provider !== 'codex'
+        provider !== 'codex' && provider !== 'antigravity'
           ? Promise.resolve({ sessions: [] as NativeSessionSummary[], nextCursor: null })
           : api<{ sessions: NativeSessionSummary[]; nextCursor: string | null }>(
               endpoint + (query.size ? '?' + query : ''),
@@ -218,6 +227,9 @@ export function SharedSessions({
             <RefreshCw size={13} className={loading ? 'spin' : ''} /> 刷新
           </button>
         </div>
+        {provider === 'antigravity' && (
+          <p className="muted">原生会话可接续；旧消息暂不能完整展示。这里只列出当前账号目录中的会话。</p>
+        )}
         {error && (
           <div className="error" role="alert">
             {error}
@@ -230,7 +242,7 @@ export function SharedSessions({
         )}
         {!loading && !error && history.length === 0 && !cursor && (
           <p className="shared-session-empty">
-            {provider !== 'codex'
+            {provider !== 'codex' && provider !== 'antigravity'
               ? '此范围内还没有当前账号的对话。'
               : scope === 'all'
                 ? '暂时没有可访问的 Codex 会话。如需查看其他入口的会话，请确认使用同一台机器、同一系统用户和相同的 Codex 数据目录（CODEX_HOME）。'
@@ -330,7 +342,7 @@ export function NativeTurn({
   replyKey = 'native',
 }: {
   turn: NativeSessionTurn;
-  provider?: 'codex' | 'kimi' | 'claude';
+  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek';
   connection: string;
   workspaceId?: string;
   root?: string;

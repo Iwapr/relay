@@ -485,6 +485,15 @@ export class FileService {
     const target = await this.previewTarget(workspace, requested);
     return this.snapshotMetadata(target.workspace, target.relative);
   }
+  /** Validate watch targets with the same fd-relative rules, without copying file contents. */
+  async watchTarget(workspace: WorkspaceDirectory, requested: string, kind: 'directory' | 'file') {
+    const target =
+      kind === 'file'
+        ? await this.previewTarget(workspace, requested)
+        : { workspace: await this.validate(workspace), relative: validateRelative(requested) };
+    await this.call('watch', target.workspace, { path: target.relative, kind });
+    return path.join(target.workspace.canonicalRoot, target.relative);
+  }
   private async snapshotMetadata(workspace: WorkspaceDirectory, relative: string): Promise<FileMetadata> {
     const filename = path.join(this.snapshotDirectory, `${randomUUID()}.snapshot`);
     await this.cleanup();

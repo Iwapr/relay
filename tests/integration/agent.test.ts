@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, rename, readdir, chmod } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, rename, readdir, chmod, symlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -429,6 +429,18 @@ test('non-Git observed changes persist and opened ignored PDF paths receive dedi
       headers: f.headers,
     });
     assert.equal(metadata.statusCode, 200);
+    for (const [kind, path] of [
+      ['directory', ''],
+      ['file', '.cache/paper.pdf'],
+    ]) {
+      const response = await f.agent.app.inject({
+        method: 'POST',
+        url: `/workspaces/${f.workspace.id}/watch`,
+        headers: f.headers,
+        payload: { action: 'renew', id: randomUUID(), kind, path },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+    }
     await new Promise((resolve) => setTimeout(resolve, 180));
     await writeFile(path.join(f.project, '.cache', 'paper.pdf'), '%PDF-new');
     await writeFile(path.join(f.project, 'notes.txt'), 'Observed notes');
@@ -451,6 +463,10 @@ test('non-Git observed changes persist and opened ignored PDF paths receive dedi
     assert.doesNotMatch(response.body, /credentials|NEVER DISPLAY|\.env/);
     await f.closeAgent();
     restarted = await buildAgent(f.config, f.factory);
+    assert.equal(restarted.watches.status().viewLeases, 0);
+    assert.equal(restarted.watches.status().projects, 0);
+    assert.equal(restarted.watches.status().directories, 0);
+    assert.equal(restarted.watches.status().files, 0);
     const retained = await restarted.app.inject({
       url: `/workspaces/${f.workspace.id}/changes`,
       headers: f.headers,
@@ -459,6 +475,119 @@ test('non-Git observed changes persist and opened ignored PDF paths receive dedi
   } finally {
     await restarted?.app.close();
     await f.close();
+  }
+});
+
+test('view leases share a shallow watch, release independently, and expire after lost clients', async () => {
+  const f = await fixture();
+  try {
+    const url = `/workspaces/${f.workspace.id}/watch`;
+    const call = (payload: object) =>
+      f.agent.app.inject({ method: 'POST', url, headers: f.headers, payload });
+    await writeFile(path.join(f.project, 'child', 'nested.txt'), 'before');
+    await f.agent.app.inject({
+      method: 'POST',
+      url: '/workspaces/open',
+      headers: f.headers,
+      payload: { path: f.project },
+    });
+    await f.agent.app.inject({ url: `/workspaces/${f.workspace.id}/tree`, headers: f.headers });
+    assert.equal(f.agent.watches.status().directories, 0);
+    const a = randomUUID(),
+      b = randomUUID();
+    for (const id of [a, b])
+      assert.equal((await call({ action: 'renew', id, kind: 'directory', path: '' })).statusCode, 200);
+    assert.equal(f.agent.watches.status().directories, 1);
+    assert.equal(f.agent.watches.status().viewLeases, 2);
+    await call({ action: 'release', id: a });
+    await writeFile(path.join(f.project, 'visible.txt'), 'visible');
+    await writeFile(path.join(f.project, 'child', 'nested.txt'), 'not in this directory');
+    await until(() => f.agent.store.list<any>('fileChange').some((c) => c.path === 'visible.txt'));
+    assert.ok(!f.agent.store.list<any>('fileChange').some((c) => c.path === 'child/nested.txt'));
+    await call({ action: 'release', id: b });
+    assert.equal(f.agent.watches.status().directories, 0);
+    await call({ action: 'renew', id: a, kind: 'directory', path: 'child' });
+    await writeFile(path.join(f.project, 'child', 'nested.txt'), 'now visible');
+    await until(() => f.agent.store.list<any>('fileChange').some((c) => c.path === 'child/nested.txt'));
+    f.agent.watches.expire(Date.now() + 70_000);
+    assert.equal(f.agent.watches.status().viewLeases, 0);
+    assert.equal(f.agent.watches.status().directories, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test('background tasks watch their project without a viewer and release after their final write', async () => {
+  const f = await fixture();
+  try {
+    const run = await f.submit();
+    await until(() => f.run(run.id).state === 'running');
+    assert.equal(f.agent.watches.status().projects, 1);
+    assert.equal(f.agent.watches.status().viewLeases, 0);
+    f.provider()!.emit('interaction.required', { requestId: 99, kind: 'approval' });
+    assert.equal(f.run(run.id).state, 'waiting_approval');
+    const view = randomUUID();
+    for (const payload of [
+      { action: 'renew', id: view, kind: 'directory', path: '' },
+      { action: 'release', id: view },
+    ])
+      await f.agent.app.inject({
+        method: 'POST',
+        url: `/workspaces/${f.workspace.id}/watch`,
+        headers: f.headers,
+        payload,
+      });
+    assert.equal(f.agent.watches.status().projects, 1);
+    assert.equal(f.agent.watches.status().directories, 0);
+    await writeFile(path.join(f.project, 'child', 'background.txt'), 'AI wrote in the background');
+    await until(() => f.agent.store.list<any>('fileChange').some((c) => c.path === 'child/background.txt'));
+    await writeFile(path.join(f.project, 'child', 'final.txt'), 'Final write immediately before completion');
+    f.provider()!.complete();
+    await until(() => f.agent.watches.status().projects === 0);
+    assert.ok(f.agent.store.list<any>('fileChange').some((c) => c.path === 'child/final.txt'));
+    await writeFile(path.join(f.project, 'child', 'idle.txt'), 'No longer observed');
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    assert.ok(!f.agent.store.list<any>('fileChange').some((c) => c.path === 'child/idle.txt'));
+  } finally {
+    await f.close();
+  }
+});
+
+test('preview leases validate targets and survive atomic replacement without watching sibling files', async () => {
+  const f = await fixture();
+  const temporary = await mkdtemp(path.join(tmpdir(), 'relay-watch-preview-'));
+  try {
+    const filename = path.join(temporary, 'preview.md');
+    await writeFile(filename, 'before');
+    await symlink(filename, path.join(f.project, 'linked.md'));
+    const url = `/workspaces/${f.workspace.id}/watch`;
+    const call = (p: string, kind = 'file') =>
+      f.agent.app.inject({
+        method: 'POST',
+        url,
+        headers: f.headers,
+        payload: { action: 'renew', id: randomUUID(), kind, path: p },
+      });
+    for (const denied of ['../outside', '/etc/hosts', 'linked.md', '.env', 'child'])
+      assert.notEqual((await call(denied)).statusCode, 200, denied);
+    assert.notEqual((await call('../', 'directory')).statusCode, 200);
+    assert.equal((await call(filename)).statusCode, 200);
+    await writeFile(filename + '.new', 'replacement');
+    await rename(filename + '.new', filename);
+    await until(() => f.agent.store.list<any>('fileChange').some((c) => c.path === filename));
+    const seq = f.agent.store.sequence();
+    await rm(filename);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await writeFile(filename, 'recreated');
+    await until(() => f.agent.store.replay(seq).some((e) => e.type === 'files.changed'));
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    const recreated = f.agent.store.sequence();
+    await writeFile(filename, 'another edit');
+    await until(() => f.agent.store.replay(recreated).some((e) => e.type === 'files.changed'));
+    assert.equal(f.agent.store.list('workspace').length, 1);
+  } finally {
+    await f.close();
+    await rm(temporary, { recursive: true, force: true });
   }
 });
 

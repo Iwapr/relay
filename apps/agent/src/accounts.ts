@@ -42,7 +42,9 @@ export function registerAccounts(
     profile.provider === undefined ||
     profile.provider === 'codex' ||
     profile.provider === 'kimi' ||
-    profile.provider === 'claude';
+    profile.provider === 'claude' ||
+    profile.provider === 'antigravity' ||
+    profile.provider === 'deepseek';
   const child = (profile: AccountProfile) => {
     if (!supported(profile)) throw new AppError('unsupported_feature', '此账号的提供方已不再支持', 404);
     if (closing) throw new AppError('agent_unavailable', 'Agent 正在停止', 503);
@@ -55,7 +57,13 @@ export function registerAccounts(
       await chmod(directory, 0o700);
       const kimi = profile.provider === 'kimi';
       const claude = profile.provider === 'claude';
-      const codex = !kimi && !claude;
+      const antigravity = profile.provider === 'antigravity';
+      const deepseek = profile.provider === 'deepseek';
+      const codex = !kimi && !claude && !antigravity && !deepseek;
+      const deepseekHome = join(directory, 'deepseek');
+      if (deepseek) await mkdir(deepseekHome, { recursive: true, mode: 0o700 });
+      const antigravityHome = join(directory, 'antigravity');
+      if (antigravity) await mkdir(antigravityHome, { recursive: true, mode: 0o700 });
       const claudeHome = join(directory, 'claude');
       if (claude) await mkdir(claudeHome, { recursive: true, mode: 0o700 });
       const kimiHome = join(directory, 'kimi');
@@ -63,7 +71,17 @@ export function registerAccounts(
       const childConfig: AgentConfig = {
         ...config,
         codexHome: config.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), '.codex'),
-        provider: claude ? 'claude' : kimi ? 'kimi' : 'codex',
+        provider: deepseek
+          ? 'deepseek'
+          : antigravity
+            ? 'antigravity'
+            : claude
+              ? 'claude'
+              : kimi
+                ? 'kimi'
+                : 'codex',
+        deepseekHome: deepseek ? deepseekHome : undefined,
+        antigravityHome: antigravity ? antigravityHome : undefined,
         claudeHome: claude ? claudeHome : undefined,
         kimiHome: kimi ? kimiHome : undefined,
         authHome: codex ? home(profile.id) : undefined,
@@ -117,7 +135,7 @@ export function registerAccounts(
     const { label, provider } = z
       .object({
         label: z.string().trim().min(1).max(60),
-        provider: z.enum(['codex', 'kimi', 'claude']).default('codex'),
+        provider: z.enum(['codex', 'kimi', 'claude', 'antigravity', 'deepseek']).default('codex'),
       })
       .strict()
       .parse(request.body);
@@ -127,7 +145,7 @@ export function registerAccounts(
     )
       throw new AppError(
         'account_limit',
-        `最多添加 8 个 ${provider === 'claude' ? 'Claude' : provider === 'kimi' ? 'Kimi Code' : 'ChatGPT'} 账号`,
+        `最多添加 8 个 ${provider === 'deepseek' ? 'DeepSeek（测试）' : provider === 'antigravity' ? 'Gemini（测试）' : provider === 'claude' ? 'Claude' : provider === 'kimi' ? 'Kimi Code' : 'ChatGPT'} 账号`,
         409,
       );
     const profile: AccountProfile = { id: randomUUID(), label, provider };

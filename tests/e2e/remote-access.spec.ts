@@ -9,6 +9,7 @@ test('remote management opens below accounts and generates a relay guide on desk
     manageable: true,
     enabled: false,
     localOrigin: 'http://192.168.1.20:4080',
+    gatewayPort: 4180,
     tailscale: { state: 'ready', ip: '100.64.0.1', message: 'Tailscale 已连接，可启用远程入口。' },
   };
   await page.route('**/api/remote-access', async (route) => {
@@ -38,6 +39,7 @@ test('remote management opens below accounts and generates a relay guide on desk
   await page.getByRole('button', { name: '远程管理', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '远程管理' });
   await expect(dialog.getByText('仅本机 / 局域网访问', { exact: true })).toBeVisible();
+  await expect(dialog.locator('code').filter({ hasText: 'http://100.64.0.1:4180' })).toBeVisible();
   await dialog.getByLabel('启用 Tailscale 远程访问', { exact: true }).check();
   await dialog.getByLabel('使用云服务器中转', { exact: true }).check();
   await dialog.getByLabel('云服务器公网 IPv4', { exact: true }).fill('203.0.113.10');

@@ -74,6 +74,65 @@ async function openFile(page: Page, name: string) {
   await page.locator('.file-list').getByRole('button', { name, exact: true }).click();
 }
 
+test('file watches follow visible panels and release when the task page hides them', async ({
+  page,
+}, info) => {
+  const fixture = JSON.parse(await readFile('.runtime/e2e/fixture.json', 'utf8'));
+  const root = fixture.tasks[info.project.name];
+  await writeFile(root + '/watch-preview.md', '# Watch before');
+  await login(page);
+  await openFolder(page, root);
+  const status = async () =>
+    (await (await page.request.get('/api/connections/a/status')).json()).diagnostics.fileWatches;
+  await expect.poll(async () => (await status()).directories).toBe(1);
+  expect((await status()).projects).toBe(0);
+  await openFile(page, 'watch-preview.md');
+  await expect.poll(async () => (await status()).files).toBe(1);
+  await expect(page.getByRole('heading', { name: 'Watch before', exact: true })).toBeVisible();
+  await writeFile(root + '/watch-preview.md', '# Watch after');
+  await expect(page.getByRole('button', { name: '文件有新版本，点击刷新 · 保留阅读位置' })).toBeVisible();
+  await chatTab(page);
+  await expect.poll(async () => (await status()).files).toBe(0);
+  await expect.poll(async () => (await status()).directories).toBe(info.project.name === 'mobile' ? 0 : 1);
+  await mobileView(page, '任务');
+  await expect.poll(async () => (await status()).viewLeases).toBe(0);
+  expect((await status()).projects).toBe(0);
+  await writeFile(root + '/watch-preview.md', '# Changed while hidden');
+  await mobileView(page, '预览');
+  await expect.poll(async () => (await status()).files).toBe(1);
+  await expect(page.getByRole('button', { name: '文件有新版本，点击刷新 · 保留阅读位置' })).toBeVisible();
+  await page.getByRole('button', { name: '文件有新版本，点击刷新 · 保留阅读位置' }).click();
+  await expect(page.getByRole('heading', { name: 'Changed while hidden' })).toBeVisible();
+  await mobileView(page, '任务');
+  await expect.poll(async () => (await status()).viewLeases).toBe(0);
+});
+
+test('PDF citation and reference links navigate to named and explicit destinations', async ({ page }) => {
+  const fixture = JSON.parse(await readFile('.runtime/e2e/fixture.json', 'utf8'));
+  await login(page);
+  await openFolder(page, fixture.primary);
+  await openFile(page, 'paper.pdf');
+  const firstPage = page.locator('.pdfViewer .page[data-page-number="1"]');
+  const citation = firstPage.getByRole('link', { name: 'Page one - selectable text', exact: true });
+  await expect(citation).toBeVisible();
+  const width = await firstPage.evaluate((el) => el.getBoundingClientRect().width);
+  const originalUrl = page.url();
+  await citation.click();
+  await expect(page.getByLabel('页码', { exact: true })).toHaveValue('2');
+  const reference = page
+    .locator('.page[data-page-number="2"]')
+    .getByRole('link', { name: 'Second page', exact: true });
+  await expect(reference).toBeVisible();
+  expect(await firstPage.evaluate((el) => el.getBoundingClientRect().width)).toBe(width);
+  await reference.click();
+  await expect(page.getByLabel('页码', { exact: true })).toHaveValue('1');
+  expect(page.url()).toBe(originalUrl);
+  const external = firstPage.locator('.annotationLayer a[href="https://example.com/"]');
+  await expect(external).toHaveAttribute('target', '_blank');
+  await expect(external).toHaveAttribute('rel', /noopener/);
+  await expect(page.locator('.pdf-view [role="alert"]')).toHaveCount(0);
+});
+
 test('Chinese LaTeX PDF loads bundled font maps and renders Chinese text', async ({ page }) => {
   const fixture = JSON.parse(await readFile('.runtime/e2e/fixture.json', 'utf8'));
   await writeFile(fixture.primary + '/chinese.pdf', await readFile('tests/fixtures/pdf/cjk.pdf'));

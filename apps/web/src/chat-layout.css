@@ -120,22 +120,31 @@
   background: transparent;
 }
 .chat-panel .composer-context {
-  position: absolute;
-  right: 14px;
-  bottom: 6px;
-  z-index: 0;
-  max-width: calc(100% - 28px);
+  display: block;
+  margin: 0 14px 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #a6b3aa;
+  text-align: right;
+  color: #829087;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  pointer-events: none;
-  user-select: none;
 }
-.chat-panel .composer-input:focus-within .composer-context {
-  opacity: 0.55;
+.composer-help {
+  margin: 6px 2px 0;
+  color: #829087;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.composer-help summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.composer-help p {
+  margin: 4px 0 0;
+  max-height: 72px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .chat-panel .composer-bottom .actions {
   margin-left: auto;
@@ -282,12 +291,12 @@
 .chat-panel .composer-bottom {
   padding: 4px 8px 8px;
   align-items: center;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 4px;
 }
 .composer-controls {
   display: flex;
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   align-items: center;
   flex-wrap: nowrap;

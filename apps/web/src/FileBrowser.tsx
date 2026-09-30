@@ -17,6 +17,7 @@ import { api, base, save, saved, type Workspace } from './api';
 import { useFileTransfers } from './file-transfers';
 import './file-transfers.css';
 import { FileOperation, type FileAction } from './FileOperation';
+import { useFileWatch } from './use-file-watch';
 interface Entry {
   name: string;
   path: string;
@@ -52,6 +53,8 @@ function WorkspaceFiles({ connection, workspace, selected, onOpen, onFolder, rev
   const [menu, setMenu] = useState<'transfer' | 'new' | null>(null);
   const [managing, setManaging] = useState(false);
   const [operation, setOperation] = useState<FileAction | null>(null);
+  const panel = useRef<HTMLElement>(null);
+  useFileWatch(panel, connection, workspace?.id, 'directory', directory, () => setRefresh((r) => r + 1));
   const toggle = (path: string) =>
     setChecked((old) => {
       const next = new Set(old);
@@ -126,7 +129,7 @@ function WorkspaceFiles({ connection, workspace, selected, onOpen, onFolder, rev
     }
   };
   return (
-    <aside className="file-panel">
+    <aside ref={panel} className="file-panel">
       <div className="panel-heading">
         <span>项目文件</span>
         <div className="actions">

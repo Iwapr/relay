@@ -56,7 +56,11 @@ export interface Run {
   accountProfile?: string;
   accountLabel?: string;
   images?: ImageAttachment[];
-  restorePoint?: { state: 'preparing' | 'ready' | 'unavailable' | 'restored'; reason?: string };
+  restorePoint?: {
+    state: 'preparing' | 'ready' | 'unavailable' | 'restored';
+    reason?: string;
+    scope?: 'files';
+  };
   id: string;
   workspaceId: string;
   conversationId: string;

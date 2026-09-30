@@ -205,6 +205,29 @@ transferRead.responses['200'].content = Object.fromEntries(
 route('get', c + '/workspaces/{w}/tree', '项目只读文件树', {
   query: [q('path'), q('cursor'), q('limit', { type: 'integer' }), q('hidden', { type: 'boolean' })],
 });
+route('post', c + '/workspaces/{w}/watch', '续期或释放当前目录/预览文件的监听；停止续期后自动过期', {
+  request: {
+    oneOf: [
+      {
+        type: 'object',
+        required: ['action', 'id'],
+        additionalProperties: false,
+        properties: { action: { const: 'release' }, id: { type: 'string', format: 'uuid' } },
+      },
+      {
+        type: 'object',
+        required: ['action', 'id', 'kind', 'path'],
+        additionalProperties: false,
+        properties: {
+          action: { const: 'renew' },
+          id: { type: 'string', format: 'uuid' },
+          kind: { enum: ['directory', 'file'] },
+          path: { type: 'string', maxLength: 4096 },
+        },
+      },
+    ],
+  },
+});
 route('get', c + '/workspaces/{w}/metadata', '创建固定版本预览快照并读取元数据', {
   query: [q('path', str, true)],
 });
@@ -342,16 +365,20 @@ for (const [path, operations] of Object.entries({ ...paths })) {
   }
   paths[scoped] = copy;
 }
-route('get', c + '/providers/codex/accounts', '列出当前连接的 ChatGPT、Kimi Code 和 Claude 账号档案');
+route('get', c + '/providers/codex/accounts', '列出当前连接的 AI 账号档案');
 route(
   'post',
   c + '/providers/codex/accounts',
-  '添加独立 ChatGPT、Kimi Code 或 Claude 账号；授权方式由提供方决定',
+  '添加独立 AI 账号；授权方式由提供方决定，每个提供方最多 8 个账号',
   {
     request: obj(
       {
         label: { type: 'string', minLength: 1, maxLength: 60 },
-        provider: { type: 'string', enum: ['codex', 'kimi', 'claude'], default: 'codex' },
+        provider: {
+          type: 'string',
+          enum: ['codex', 'kimi', 'claude', 'antigravity', 'deepseek'],
+          default: 'codex',
+        },
       },
       ['label'],
     ),
@@ -391,6 +418,20 @@ route(
       },
       ['code', 'loginId'],
     ),
+  },
+);
+for (const name of ['account', 'models', 'quota'])
+  route(
+    'get',
+    c + '/accounts/{accountId}/providers/deepseek/' + name,
+    '读取指定 DeepSeek API 账号的 ' + name,
+  );
+route(
+  'post',
+  c + '/accounts/{accountId}/providers/deepseek/credentials',
+  '验证并保存 DeepSeek 官方 API Key；空字符串移除密钥；活动任务期间拒绝修改，不回显密钥',
+  {
+    request: obj({ apiKey: { type: 'string', maxLength: 4096, writeOnly: true } }, ['apiKey']),
   },
 );
 await mkdir('docs', { recursive: true });

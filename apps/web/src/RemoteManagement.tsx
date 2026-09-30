@@ -123,7 +123,8 @@ export function RemoteManagement({ onClose }: { onClose: () => void }) {
             <h3>1. Tailscale 远程访问</h3>
             <p>远程设备加入同一个 Tailscale 网络后，使用原网站账号密码登录。局域网入口继续可用。</p>
             <p>
-              {status.tailscale.message} {status.tailscale.ip && <code>{status.tailscale.ip}</code>}
+              {status.tailscale.message}{' '}
+              {status.tailscale.ip && <code>{`http://${status.tailscale.ip}:${status.gatewayPort}`}</code>}
             </p>
             <button
               disabled={busy}
@@ -133,7 +134,7 @@ export function RemoteManagement({ onClose }: { onClose: () => void }) {
               刷新检测
             </button>
             <details open={status.tailscale.state !== 'ready'}>
-              <summary>首次安装与登录（在办公室服务器执行）</summary>
+              <summary>首次安装与登录（在部署 Relay 的服务器执行）</summary>
               <p>
                 Linux
                 管理员在服务器终端执行以下命令，打开命令返回的官方授权链接完成登录，再刷新检测。网页不会代替你执行
@@ -180,8 +181,8 @@ export function RemoteManagement({ onClose }: { onClose: () => void }) {
                 <section>
                   <h3>2. 云服务器中转（可选）</h3>
                   <p>
-                    通过云服务器的 HTTPS 地址访问，访问者无需安装 Tailscale。办公室和云服务器仍通过 Tailscale
-                    加密连接。
+                    通过云服务器的 HTTPS 地址访问，访问者无需安装 Tailscale。部署 Relay
+                    的服务器和云服务器仍通过 Tailscale 加密连接。
                   </p>
                   <label className="remote-toggle">
                     <input

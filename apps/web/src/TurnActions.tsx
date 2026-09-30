@@ -24,6 +24,7 @@ export function TurnActions({
   onSelect: (conversation: Conversation, draft?: string) => void;
   onError: (message: string) => void;
 }) {
+  const filesOnly = run?.restorePoint?.scope === 'files';
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<{
     token: string;
@@ -92,11 +93,21 @@ export function TurnActions({
         {run && latest && (
           <button
             disabled={disabled || busy || run.restorePoint?.state !== 'ready'}
-            title={run.restorePoint?.state === 'ready' ? '将项目文件和对话恢复至本轮执行前' : reason}
+            title={
+              run.restorePoint?.state === 'ready'
+                ? filesOnly
+                  ? '仅恢复本轮修改的项目文件；不回退模型记忆'
+                  : '将项目文件和对话恢复至本轮执行前'
+                : reason
+            }
             onClick={() => void preview()}
           >
             <Undo2 size={14} />
-            {run.restorePoint?.state === 'restored' ? '已回滚' : '回滚本轮（含文件）'}
+            {run.restorePoint?.state === 'restored'
+              ? '已恢复'
+              : filesOnly
+                ? '恢复本轮文件'
+                : '回滚本轮（含文件）'}
           </button>
         )}
         {run && latest && run.restorePoint?.state !== 'ready' && <small>{reason}</small>}
@@ -110,8 +121,12 @@ export function TurnActions({
               aria-modal="true"
               aria-labelledby="rollback-title"
             >
-              <h3 id="rollback-title">回滚本轮对话和文件</h3>
-              <p>项目文件恢复到本轮开始前，对话从此前位置新建分支。原对话保留，本轮提问放回输入框。</p>
+              <h3 id="rollback-title">{filesOnly ? '仅恢复本轮文件' : '回滚本轮对话和文件'}</h3>
+              <p>
+                {filesOnly
+                  ? '项目文件恢复到本轮开始前，随后打开没有历史上下文的新会话。原对话保留，其模型记忆不会回退；本轮提问放回输入框。'
+                  : '项目文件恢复到本轮开始前，对话从此前位置新建分支。原对话保留，本轮提问放回输入框。'}
+              </p>
               <p>仅恢复项目工作文件，不恢复 Git 提交、项目外文件或外部服务。</p>
               <p>
                 {plan.files.length ? `将处理 ${plan.files.length} 个路径：` : '本轮没有需要恢复的项目文件。'}
@@ -135,7 +150,7 @@ export function TurnActions({
                   取消
                 </button>
                 <button autoFocus disabled={busy || disabled} onClick={() => void restore()}>
-                  {busy ? '正在恢复…' : '确认回滚文件和对话'}
+                  {busy ? '正在恢复…' : filesOnly ? '确认恢复文件并新建会话' : '确认回滚文件和对话'}
                 </button>
               </div>
             </section>

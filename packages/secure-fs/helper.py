@@ -134,6 +134,12 @@ def run(request):
                       "writable": os.access(".", os.W_OK, dir_fd=fd),
                       "shared": not private_ancestor,
                       "ownerUid": info.st_uid, "mode": stat.S_IMODE(info.st_mode)}
+        elif operation == "watch":
+            directory = request.get("kind") == "directory"
+            fd, info = access.relative(fd, request.get("path", ""), directory)
+            if not directory and not stat.S_ISREG(info.st_mode):
+                raise Denied("permission_denied", "Only regular files can be watched as previews")
+            result = {"ok": True}
         elif operation == "mkdir":
             fd, info = access.relative(fd, request.get("path", ""), True)
             name = request.get("name", "")

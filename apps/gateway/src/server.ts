@@ -159,7 +159,7 @@ export async function buildGateway(input: GatewayConfig, remote?: RemoteManager)
   });
   const localManagement = () => {
     if (config.allowTailscaleHttp || config.secureCookies)
-      throw new AppError('permission_denied', '请通过办公室局域网或服务器本机入口管理远程配置。', 403);
+      throw new AppError('permission_denied', '请通过服务器所在局域网或服务器本机入口管理远程配置。', 403);
     if (!remote)
       throw new AppError('permission_denied', '此部署未启用网页远程配置，请联系服务器管理员。', 403);
     return remote;
@@ -170,12 +170,13 @@ export async function buildGateway(input: GatewayConfig, remote?: RemoteManager)
         manageable: false,
         enabled: Boolean(config.tailscaleHost),
         localOrigin: config.publicOrigin,
+        gatewayPort: config.port,
         reason: '此部署未启用网页远程配置，请联系服务器管理员。',
         tailscale: { state: 'unavailable', message: '由外部配置管理。' },
       };
     const result = await remote.status();
     if (config.allowTailscaleHttp || config.secureCookies)
-      return { ...result, manageable: false, reason: '请通过办公室局域网或服务器本机入口管理远程配置。' };
+      return { ...result, manageable: false, reason: '请通过服务器所在局域网或服务器本机入口管理远程配置。' };
     return result;
   });
   app.post('/api/remote-access', async (request) => localManagement().configure(request.body));

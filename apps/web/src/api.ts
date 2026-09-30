@@ -8,7 +8,7 @@ import type {
 } from '../../../packages/contracts/src/index.ts';
 export type { AgentIdentity, Conversation, Run, Interaction, Workspace, WorkbenchEvent };
 export interface Connection {
-  provider?: 'codex' | 'kimi' | 'claude';
+  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek';
   parentId?: string;
   accountLabel?: string;
   accountIdentifier?: string | null;

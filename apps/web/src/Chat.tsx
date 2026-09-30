@@ -163,7 +163,7 @@ export function Chat({
   onShowChat,
   toolbarVisible = true,
 }: {
-  provider?: 'codex' | 'kimi' | 'claude';
+  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek';
   connection: string;
   workspace?: Workspace;
   conversations: Conversation[];
@@ -185,7 +185,15 @@ export function Chat({
   const accountReady =
     account?.authenticated === true &&
     account.authMode ===
-      (provider === 'claude' ? 'claude-code' : provider === 'kimi' ? 'kimi-code' : 'chatgpt');
+      (provider === 'deepseek'
+        ? 'deepseek-api-key'
+        : provider === 'antigravity'
+          ? 'google-antigravity'
+          : provider === 'claude'
+            ? 'claude-code'
+            : provider === 'kimi'
+              ? 'kimi-code'
+              : 'chatgpt');
   const key = connection + ':' + (workspace?.id ?? 'none');
   const [conversation, setConversation] = useState(() => saved(key + ':conversation', '')),
     [draft, setDraft] = useState(''),
@@ -239,7 +247,13 @@ export function Chat({
     setModel(saved(key + ':model', ''));
     setEffort(saved(key + ':effort', ''));
     const storedMode = saved<string>(key + ':mode', 'read-only');
-    setMode(storedMode === 'workspace-write' || storedMode === 'full-access' ? storedMode : 'read-only');
+    setMode(
+      provider === 'deepseek'
+        ? 'full-access'
+        : storedMode === 'workspace-write' || storedMode === 'full-access'
+          ? storedMode
+          : 'read-only',
+    );
     setError('');
     setHistory(null);
     setHistoryError('');
@@ -519,7 +533,7 @@ export function Chat({
       text,
       model,
       reasoningEffort: effort || null,
-      permissionMode: mode,
+      permissionMode: provider === 'deepseek' ? 'full-access' : mode,
     });
     onRefresh();
     return result;
@@ -585,7 +599,7 @@ export function Chat({
         text,
         model: targetModel,
         reasoningEffort: effort || selectedModel?.defaultReasoningEffort || null,
-        permissionMode: mode,
+        permissionMode: provider === 'deepseek' ? 'full-access' : mode,
         ...(imageIds.length ? { imageIds } : {}),
       });
       save(key + ':draft', '');
@@ -612,7 +626,17 @@ export function Chat({
       <button
         className="chat-toolbar-button"
         title="历史对话"
-        aria-label={provider === 'claude' ? 'Claude 会话' : provider === 'kimi' ? 'Kimi 会话' : 'Codex 会话'}
+        aria-label={
+          provider === 'deepseek'
+            ? 'DeepSeek（测试）会话'
+            : provider === 'antigravity'
+              ? 'Gemini（测试）会话'
+              : provider === 'claude'
+                ? 'Claude 会话'
+                : provider === 'kimi'
+                  ? 'Kimi 会话'
+                  : 'Codex 会话'
+        }
         disabled={!online}
         onClick={() => {
           onShowChat?.();
@@ -652,6 +676,11 @@ export function Chat({
         }}
       >
         <div ref={timelineContent} className="chat-timeline">
+          {provider === 'antigravity' && currentConversation?.providerSessionId && timeline.length === 0 && (
+            <p className="muted">
+              已接续 Gemini 原生会话。模型会保留原上下文，旧消息暂不能完整展示；这里将记录后续对话。
+            </p>
+          )}
           {(historyError || historical?.nativeHistoryError) && (
             <div className="error shared-history-error" role="alert">
               会话记录暂时无法读取：{historyError || historical?.nativeHistoryError}
@@ -751,7 +780,17 @@ export function Chat({
                       />
                     )}
                     <ReplyPanel
-                      providerName={provider === 'claude' ? 'Claude' : provider === 'kimi' ? 'Kimi' : 'Codex'}
+                      providerName={
+                        provider === 'deepseek'
+                          ? 'DeepSeek（测试）'
+                          : provider === 'antigravity'
+                            ? 'Gemini（测试）'
+                            : provider === 'claude'
+                              ? 'Claude'
+                              : provider === 'kimi'
+                                ? 'Kimi'
+                                : 'Codex'
+                      }
                       state={run.state}
                       model={run.model}
                     >
@@ -888,19 +927,6 @@ export function Chat({
             }}
           />
           <div className="composer-input">
-            {last?.contextUsage && (
-              <span
-                className="composer-context"
-                id={`context-usage-${key}`}
-                aria-label={contextUsageLabel}
-                title={contextUsageLabel}
-              >
-                {new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(
-                  last.contextUsage.contextTokens,
-                )}{' '}
-                上下文
-              </span>
-            )}
             <textarea
               ref={input}
               aria-label="任务指令"
@@ -950,6 +976,19 @@ export function Chat({
               title={['电脑：Enter 发送，Shift+Enter 换行', contextUsageLabel].filter(Boolean).join('\n')}
               rows={2}
             />
+            {last?.contextUsage && (
+              <span
+                className="composer-context"
+                id={`context-usage-${key}`}
+                aria-label={contextUsageLabel}
+                title={contextUsageLabel}
+              >
+                {new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(
+                  last.contextUsage.contextTokens,
+                )}{' '}
+                上下文
+              </span>
+            )}
           </div>
           <div className="composer-bottom">
             <div className="composer-controls" aria-label="任务设置">
@@ -992,6 +1031,8 @@ export function Chat({
                       <option key={item} value={item}>
                         {(
                           {
+                            off: '关闭',
+                            max: '最高',
                             minimal: '最低',
                             low: '低',
                             medium: '中',
@@ -1005,30 +1046,44 @@ export function Chat({
                   </select>
                 </label>
               )}
-              <label>
-                <select
-                  aria-label="权限模式"
-                  value={mode}
-                  onChange={(e) => {
-                    const value = e.target.value as typeof mode;
-                    setMode(value);
-                    save(key + ':mode', value);
-                  }}
+              {provider === 'deepseek' ? (
+                <span
+                  className="composer-mode"
+                  aria-label="权限模式：完全访问（固定）"
+                  title="DeepSeek 可读写当前 Linux 用户可访问的文件并执行命令，无沙箱、无需逐次审批；当前仅支持此模式。"
                 >
-                  <option value="read-only">{provider !== 'codex' ? '规划（Plan）' : '只读'}</option>
-                  <option value="workspace-write">{provider !== 'codex' ? '工具审批' : '可编辑'}</option>
-                  <option value="full-access">完全访问</option>
-                </select>
-              </label>
+                  完全访问 · 无审批
+                </span>
+              ) : (
+                <label>
+                  <select
+                    aria-label="权限模式"
+                    value={mode}
+                    onChange={(e) => {
+                      const value = e.target.value as typeof mode;
+                      setMode(value);
+                      save(key + ':mode', value);
+                    }}
+                  >
+                    <option value="read-only">{provider !== 'codex' ? '规划（Plan）' : '只读'}</option>
+                    <option value="workspace-write">
+                      {provider === 'antigravity'
+                        ? '按规则执行（测试）'
+                        : provider !== 'codex'
+                          ? '工具审批'
+                          : '可编辑'}
+                    </option>
+                    <option value="full-access">完全访问</option>
+                  </select>
+                </label>
+              )}
             </div>
-            {provider !== 'codex' && (
-              <small className="chat-settings-note">
-                {provider === 'claude' ? 'Claude' : 'Kimi'}{' '}
-                使用自身的规划与工具审批模式，无项目文件沙箱；完全访问会自动批准工具操作。
-              </small>
-            )}
             <div className="actions">
-              {workspaceBusy && <small className="queue-hint">发送后排队</small>}
+              {workspaceBusy && (
+                <small className="queue-hint" title="当前任务结束后自动发送">
+                  发送后排队
+                </small>
+              )}
               <button
                 className="attach-image-button"
                 aria-label="添加图片"
@@ -1078,6 +1133,35 @@ export function Chat({
             </div>
           </div>
         </div>
+        {provider !== 'codex' && (
+          <details className="composer-help" key={provider}>
+            <summary>
+              {provider === 'deepseek'
+                ? 'DeepSeek（测试）'
+                : provider === 'antigravity'
+                  ? 'Gemini（测试）'
+                  : provider === 'claude'
+                    ? 'Claude'
+                    : 'Kimi'}{' '}
+              使用说明
+            </summary>
+            <p>
+              {provider === 'deepseek' ? (
+                <>
+                  使用 DeepSeek 官方 Harness 和官方 API，按量计费。仅支持完全访问：可读写当前 Linux
+                  用户可访问的文件并执行命令，无沙箱、无需逐次审批。暂不支持图片和交互式提问；回复按模型步骤显示。
+                </>
+              ) : provider === 'antigravity' ? (
+                <>
+                  由 Antigravity
+                  执行，暂不支持图片或逐次审批。规划模式不是只读沙箱；按规则执行允许项目编辑及预设命令，其他需审批操作会被拒绝，可在账号管理中配置命令权限。完全访问会自动批准工具操作。
+                </>
+              ) : (
+                <>使用自身的规划与工具审批模式，无项目文件沙箱；完全访问会自动批准工具操作。</>
+              )}
+            </p>
+          </details>
+        )}
       </div>
       {sharedOpen && (
         <SharedSessions

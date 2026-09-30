@@ -86,7 +86,7 @@ export function relayGuide(value: unknown, ip: string, gatewayPort: number): Rel
       },
       {
         title: '3. 限制内网访问范围',
-        text: `在 Tailscale 管理控制台，将云服务器 ${relay.cloudTailscaleIp} 的访问范围限制为办公室服务器 ${ip} 的 TCP ${gatewayPort}。检查并收紧已有的全互通规则；办公室不需要公网端口映射。办公室主机防火墙也应允许此来源访问该端口。`,
+        text: `在 Tailscale 管理控制台，将云服务器 ${relay.cloudTailscaleIp} 的访问范围限制为部署 Relay 的服务器 ${ip} 的 TCP ${gatewayPort}。检查并收紧已有的全互通规则；Relay 所在网络不需要公网端口映射。部署 Relay 的服务器防火墙也应允许此来源访问该端口。`,
       },
       {
         title: '4. 安装 Nginx 并申请证书',
@@ -153,6 +153,7 @@ export function createRemoteManager(
       : '此部署由外部配置管理，或主入口不是局域网 HTTP；请由服务器管理员配置远程入口。',
     enabled: Boolean(current.tailscaleHost),
     localOrigin: current.publicOrigin,
+    gatewayPort: current.port,
     remoteOrigin: current.tailscaleHost ? `http://${current.tailscaleHost}:${current.port}` : undefined,
     proxyOrigin: current.tailscaleProxyOrigin,
     relay: current.remoteRelay,
@@ -165,7 +166,11 @@ export function createRemoteManager(
       const detected = await detect();
       const ip = detected.ip ?? current.tailscaleHost;
       if (!ip)
-        throw new AppError('invalid_request', '请先在办公室服务器连接 Tailscale，再生成中转步骤。', 400);
+        throw new AppError(
+          'invalid_request',
+          '请先在部署 Relay 的服务器连接 Tailscale，再生成中转步骤。',
+          400,
+        );
       return relayGuide(value, ip, current.port);
     },
     configure: async (value) => {

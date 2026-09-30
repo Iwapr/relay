@@ -27,7 +27,9 @@
     "release": "tsx scripts/release.ts",
     "lan": "tsx scripts/lan.ts",
     "tailscale": "tsx scripts/tailscale.ts",
-    "docs:media": "bash scripts/record-media.sh"
+    "docs:media": "bash scripts/record-media.sh",
+    "install:gemini": "tsx scripts/install-gemini.ts",
+    "install:deepseek": "tsx scripts/install-deepseek.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "2.1.280",

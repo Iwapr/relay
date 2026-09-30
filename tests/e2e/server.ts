@@ -1,3 +1,5 @@
+import { deepseekExecutable, deepseekApiResponse } from '../helpers/deepseek-process.ts';
+import { geminiExecutable } from '../helpers/gemini-process.ts';
 /** Isolated browser fixture. Production entry points never import this provider. */
 import { mkdtemp, mkdir, writeFile, chmod, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -196,13 +198,16 @@ function samplePdf(): Buffer {
     'BT /F1 20 Tf 50 740 Td (Relay document preview) Tj 0 -30 Td (Page one - selectable text) Tj ET';
   const content2 = 'BT /F1 20 Tf 50 740 Td (Second page) Tj ET';
   const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Catalog /Pages 2 0 R /Names << /Dests << /Names [(cite.reference) [6 0 R /XYZ 50 740 2]] >> >> >>',
     '<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R /Annots [8 0 R 10 0 R] >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
     `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R /Annots [9 0 R] >>',
     `<< /Length ${content2.length} >>\nstream\n${content2}\nendstream`,
+    '<< /Type /Annot /Subtype /Link /Rect [50 705 320 730] /Border [0 0 0] /A << /S /GoTo /D (cite.reference) >> >>',
+    '<< /Type /Annot /Subtype /Link /Rect [50 735 200 760] /Border [0 0 0] /Dest [3 0 R /XYZ 50 740 null] >>',
+    '<< /Type /Annot /Subtype /Link /Rect [50 650 200 680] /Border [0 0 0] /A << /S /URI /URI (https://example.com/) >> >>',
   ];
   let pdf = '%PDF-1.4\n';
   const offsets = [0];
@@ -224,6 +229,7 @@ function samplePdf(): Buffer {
 }
 process.umask(0o077);
 const directory = await mkdtemp(join(tmpdir(), 'relay-browser-'));
+const geminiFixtureExecutable = await geminiExecutable(directory);
 const claudeFixtureExecutable = await claudeExecutable(directory);
 const kimiFixtureExecutable = await kimiExecutable(directory);
 const projects = join(directory, 'projects');
@@ -303,6 +309,13 @@ const agents: (Awaited<ReturnType<typeof buildAgent>> & {
   tokenFile: string;
   socketPath: string;
 })[] = [];
+const deepseekFixtureExecutable = await deepseekExecutable(directory);
+const originalFetch = globalThis.fetch;
+globalThis.fetch = (async (input: any, init?: RequestInit) => {
+  if (typeof input === 'string' && input.startsWith('https://api.deepseek.com/'))
+    return deepseekApiResponse(input, new Headers(init?.headers).get('authorization') ?? '');
+  return originalFetch(input, init);
+}) as typeof fetch;
 const authorizedHomes = new Set<string>();
 for (const id of ['a', 'b']) {
   const stateDir = join(directory, 'agent-' + id);
@@ -318,6 +331,8 @@ for (const id of ['a', 'b']) {
       codexExecutable: '/not-used-by-test-fixture',
       kimiExecutable: kimiFixtureExecutable,
       claudeExecutable: claudeFixtureExecutable,
+      antigravityExecutable: geminiFixtureExecutable,
+      deepseekExecutable: deepseekFixtureExecutable,
       codexHome: join(directory, 'shared-codex-' + id),
       maxProviders: 4,
       maxPreviewBytes: 5 * 1024 * 1024,

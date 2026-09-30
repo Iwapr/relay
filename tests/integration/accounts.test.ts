@@ -380,3 +380,29 @@ test('account-scoped uploads and downloads forward binary files without sharing 
     await f.close();
   }
 });
+
+test('Antigravity test profile is distinct from retired Gemini and limited to eight accounts', async () => {
+  const f = await fixture();
+  try {
+    const { account } = await f.json('/providers/codex/accounts', {
+      label: 'Google Pro',
+      provider: 'antigravity',
+    });
+    assert.equal(account.provider, 'antigravity');
+    for (let i = 0; i < 7; i++)
+      await f.json('/providers/codex/accounts', { label: 'Google ' + i, provider: 'antigravity' });
+    const second = await f.call('/providers/codex/accounts', {
+      label: 'Ninth Google',
+      provider: 'antigravity',
+    });
+    assert.equal(second.statusCode, 409);
+    assert.match(second.body, /测试/);
+    assert.equal(
+      isAllowedAgentRoute('POST', `/accounts/${account.id}/providers/antigravity/login/code`),
+      true,
+    );
+    assert.equal((await f.json('/providers/codex/account')).identifier, 'original@example.test');
+  } finally {
+    await f.close();
+  }
+});

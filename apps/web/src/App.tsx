@@ -1,3 +1,6 @@
+import { DeepSeekBalance } from './DeepSeekBalance';
+import { DeepSeekKeyPanel } from './DeepSeekKeyPanel';
+import { GeminiSettingsPanel } from './GeminiSettingsPanel';
 import { RemoteManagement } from './RemoteManagement';
 import { Terminal } from './Terminal';
 import { PreviewDivider } from './PreviewDivider';
@@ -148,7 +151,9 @@ export default function App() {
     [deleteConfirm, setDeleteConfirm] = useState(false),
     [accountError, setAccountError] = useState(''),
     [newAccountLabel, setNewAccountLabel] = useState(''),
-    [newAccountProvider, setNewAccountProvider] = useState<'codex' | 'kimi' | 'claude'>('codex'),
+    [newAccountProvider, setNewAccountProvider] = useState<
+      'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek'
+    >('codex'),
     [accountBusy, setAccountBusy] = useState(false),
     [account, setAccount] = useState<AccountState | null>(null),
     [models, setModels] = useState<ModelInfo[]>([]),
@@ -172,18 +177,34 @@ export default function App() {
     accountOpenRef = useRef(accountOpen);
   const selectedProvider = connections.find((c) => c.id === connection)?.provider ?? 'codex';
   const providerName =
-    selectedProvider === 'claude' ? 'Claude' : selectedProvider === 'kimi' ? 'Kimi Code' : 'ChatGPT';
+    selectedProvider === 'deepseek'
+      ? 'DeepSeek（测试）'
+      : selectedProvider === 'antigravity'
+        ? 'Gemini（测试）'
+        : selectedProvider === 'claude'
+          ? 'Claude'
+          : selectedProvider === 'kimi'
+            ? 'Kimi Code'
+            : 'ChatGPT';
   const providerAuthenticated =
     account?.authenticated &&
     account.authMode ===
-      (selectedProvider === 'claude' ? 'claude-code' : selectedProvider === 'kimi' ? 'kimi-code' : 'chatgpt');
+      (selectedProvider === 'deepseek'
+        ? 'deepseek-api-key'
+        : selectedProvider === 'antigravity'
+          ? 'google-antigravity'
+          : selectedProvider === 'claude'
+            ? 'claude-code'
+            : selectedProvider === 'kimi'
+              ? 'kimi-code'
+              : 'chatgpt');
   const accountReady = online && providerAuthenticated;
   const accountStatus = !online
     ? '连接不可用'
     : !account
       ? '账号状态未确认'
       : providerAuthenticated
-        ? providerName + ' 已登录'
+        ? providerName + (selectedProvider === 'deepseek' ? ' 已配置' : ' 已登录')
         : '账号未登录';
   const openAccountManagement = () => {
     setAccountTab('ai');
@@ -271,7 +292,7 @@ export default function App() {
                 accounts: Array<{
                   id: string;
                   label: string;
-                  provider?: 'codex' | 'kimi' | 'claude';
+                  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek';
                   account?: AccountState;
                 }>;
               }>(base(root.id) + '/providers/codex/accounts');
@@ -383,11 +404,15 @@ export default function App() {
             if (
               a.value.authenticated &&
               a.value.authMode ===
-                (selectedProvider === 'claude'
-                  ? 'claude-code'
-                  : selectedProvider === 'kimi'
-                    ? 'kimi-code'
-                    : 'chatgpt')
+                (selectedProvider === 'deepseek'
+                  ? 'deepseek-api-key'
+                  : selectedProvider === 'antigravity'
+                    ? 'google-antigravity'
+                    : selectedProvider === 'claude'
+                      ? 'claude-code'
+                      : selectedProvider === 'kimi'
+                        ? 'kimi-code'
+                        : 'chatgpt')
             )
               setLoginChallenge((current: any) => (current?.connectionId === connection ? null : current));
           }
@@ -649,6 +674,7 @@ export default function App() {
         {accountConnections.map((c) => (
           <option key={c.id} value={c.id}>
             {c.accountLabel ?? '跟随 Codex'}
+            {c.provider === 'antigravity' ? ' · Gemini（测试）' : ''}
           </option>
         ))}
       </select>
@@ -662,7 +688,11 @@ export default function App() {
     setAccountError('');
     try {
       const result = await api<{
-        account: { id: string; label: string; provider: 'codex' | 'kimi' | 'claude' };
+        account: {
+          id: string;
+          label: string;
+          provider: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek';
+        };
       }>(base(rootId) + '/providers/codex/accounts', {
         label: newAccountLabel,
         provider: newAccountProvider,
@@ -885,11 +915,15 @@ export default function App() {
               </button>
               <div className="connection-summary">
                 <span className={'status-dot ' + (accountReady ? '' : 'unknown')} aria-hidden="true" />
-                {selectedProvider === 'claude'
-                  ? 'Claude'
-                  : selectedProvider === 'kimi'
-                    ? 'Kimi Code'
-                    : 'Codex'}{' '}
+                {selectedProvider === 'deepseek'
+                  ? 'DeepSeek（测试）'
+                  : selectedProvider === 'antigravity'
+                    ? 'Gemini（测试）'
+                    : selectedProvider === 'claude'
+                      ? 'Claude'
+                      : selectedProvider === 'kimi'
+                        ? 'Kimi Code'
+                        : 'Codex'}{' '}
                 · {accountStatus}
               </div>
             </div>
@@ -1191,16 +1225,28 @@ export default function App() {
                         onClick={() => switchAccount(c.id)}
                       >
                         <span className={'account-provider-icon ' + (c.provider ?? 'codex')}>
-                          {c.provider === 'claude' ? 'C' : c.provider === 'kimi' ? 'K' : '✳'}
+                          {c.provider === 'deepseek'
+                            ? 'D'
+                            : c.provider === 'antigravity'
+                              ? 'G'
+                              : c.provider === 'claude'
+                                ? 'C'
+                                : c.provider === 'kimi'
+                                  ? 'K'
+                                  : '✳'}
                         </span>
                         <span className="account-profile-text">
                           <strong>{c.accountLabel ?? '跟随 Codex'}</strong>
                           <small>
-                            {c.provider === 'claude'
-                              ? 'Claude'
-                              : c.provider === 'kimi'
-                                ? 'Kimi Code'
-                                : 'ChatGPT'}
+                            {c.provider === 'deepseek'
+                              ? 'DeepSeek（测试）'
+                              : c.provider === 'antigravity'
+                                ? 'Gemini（测试）'
+                                : c.provider === 'claude'
+                                  ? 'Claude'
+                                  : c.provider === 'kimi'
+                                    ? 'Kimi Code'
+                                    : 'ChatGPT'}
                             {c.accountIdentifier ? ' · ' + c.accountIdentifier : ''}
                           </small>
                         </span>
@@ -1220,11 +1266,17 @@ export default function App() {
                       <select
                         aria-label="新账号类型"
                         value={newAccountProvider}
-                        onChange={(e) => setNewAccountProvider(e.target.value as 'codex' | 'kimi' | 'claude')}
+                        onChange={(e) =>
+                          setNewAccountProvider(
+                            e.target.value as 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek',
+                          )
+                        }
                       >
                         <option value="codex">ChatGPT</option>
                         <option value="kimi">Kimi Code</option>
                         <option value="claude">Claude</option>
+                        <option value="antigravity">Gemini（测试）</option>
+                        <option value="deepseek">DeepSeek（测试）</option>
                       </select>
                       <input
                         aria-label="新账号名称"
@@ -1237,7 +1289,10 @@ export default function App() {
                         {accountBusy ? '正在添加…' : '添加账号'}
                       </button>
                     </form>
-                    <p className="account-help">ChatGPT、Kimi Code 与 Claude 各可添加 8 个独立账号。</p>
+                    <p className="account-help">
+                      ChatGPT、Kimi Code 与 Claude 各可添加 8 个独立账号。Gemini（测试）也可添加 8 个独立
+                      Google 账号；DeepSeek（测试）可添加 8 个独立 API Key 配置。
+                    </p>
                   </details>
                 </aside>
                 <div className="account-detail">
@@ -1248,14 +1303,24 @@ export default function App() {
                         <h3>{currentConnection?.accountLabel ?? '跟随 Codex'}</h3>
                       </div>
                       <span className={'account-auth-badge' + (providerAuthenticated ? ' ready' : '')}>
-                        {providerAuthenticated ? '已登录' : '待登录'}
+                        {selectedProvider === 'deepseek'
+                          ? providerAuthenticated
+                            ? '已配置'
+                            : '待配置'
+                          : providerAuthenticated
+                            ? '已登录'
+                            : '待登录'}
                       </span>
                     </div>
                     {accountPicker('当前 AI 账号')}
                     <p className="account-help">
-                      {selectedProvider !== 'codex'
-                        ? '授权与会话按账号独立保存。切换账号后，已提交任务仍由原账号执行。'
-                        : 'ChatGPT 账号共享 Codex 历史。“跟随 Codex”使用远端当前登录；其他账号独立授权。'}
+                      {selectedProvider === 'deepseek'
+                        ? '使用 DeepSeek 官方 Harness 和官方 API；按量计费。密钥、设置与会话按账号隔离。仅支持完全访问，无沙箱、无需逐次审批。'
+                        : selectedProvider === 'antigravity'
+                          ? 'Gemini（测试）使用官方 Antigravity CLI。各账号独立登录和保存会话，模型与额度按实际返回显示；暂不显示邮箱和套餐名称。'
+                          : selectedProvider !== 'codex'
+                            ? '授权与会话按账号独立保存。切换账号后，已提交任务仍由原账号执行。'
+                            : 'ChatGPT 账号共享 Codex 历史。“跟随 Codex”使用远端当前登录；其他账号独立授权。'}
                     </p>
                     <dl>
                       <dt>认证方式</dt>
@@ -1265,24 +1330,28 @@ export default function App() {
                       <dt>订阅</dt>
                       <dd>{account?.planType ?? '暂无数据'}</dd>
                     </dl>
-                    {!providerAuthenticated && loginChallenge?.connectionId !== connection && (
-                      <button
-                        className="primary"
-                        disabled={!online || accountBusy}
-                        onClick={() => {
-                          setAccountBusy(true);
-                          const target = connection;
-                          void api(base(target) + `/providers/${selectedProvider}/login`, {})
-                            .then((challenge) => setLoginChallenge({ ...challenge, connectionId: target }))
-                            .catch((e) => setAccountError(e.message))
-                            .finally(() => setAccountBusy(false));
-                        }}
-                      >
-                        {selectedProvider === 'claude'
-                          ? '登录 Claude 订阅账号'
-                          : `通过设备码登录 ${providerName}`}
-                      </button>
-                    )}
+                    {selectedProvider !== 'deepseek' &&
+                      !providerAuthenticated &&
+                      loginChallenge?.connectionId !== connection && (
+                        <button
+                          className="primary"
+                          disabled={!online || accountBusy}
+                          onClick={() => {
+                            setAccountBusy(true);
+                            const target = connection;
+                            void api(base(target) + `/providers/${selectedProvider}/login`, {})
+                              .then((challenge) => setLoginChallenge({ ...challenge, connectionId: target }))
+                              .catch((e) => setAccountError(e.message))
+                              .finally(() => setAccountBusy(false));
+                          }}
+                        >
+                          {selectedProvider === 'antigravity'
+                            ? '登录 Google 账号（测试）'
+                            : selectedProvider === 'claude'
+                              ? '登录 Claude 订阅账号'
+                              : `通过设备码登录 ${providerName}`}
+                        </button>
+                      )}
                     {loginChallenge?.connectionId === connection && (
                       <div className="login-challenge">
                         <a href={loginChallenge.verificationUrl} target="_blank" rel="noreferrer">
@@ -1297,7 +1366,7 @@ export default function App() {
                               if (!code || accountBusy) return;
                               setAccountBusy(true);
                               setAccountError('');
-                              void api(base(connection) + '/providers/claude/login/code', {
+                              void api(base(connection) + `/providers/${selectedProvider}/login/code`, {
                                 code,
                                 loginId: loginChallenge.loginId,
                               })
@@ -1313,7 +1382,7 @@ export default function App() {
                           >
                             <p>在官方页面登录订阅账号。如果页面显示授权码，请粘贴到这里完成登录。</p>
                             <label>
-                              Claude 授权码
+                              {providerName} 授权码
                               <input
                                 name="code"
                                 type="password"
@@ -1355,12 +1424,26 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                  {selectedProvider === 'deepseek' && (
+                    <DeepSeekKeyPanel
+                      key={connection}
+                      connection={connection}
+                      online={online}
+                      configured={!!providerAuthenticated}
+                      onSaved={() => setRefresh((n) => n + 1)}
+                    />
+                  )}
+                  {selectedProvider === 'antigravity' && (
+                    <GeminiSettingsPanel key={connection} connection={connection} online={online} />
+                  )}
                   <div className="account-section">
                     <div className="account-section-heading">
                       <h3>账号额度</h3>
                       <small>当前选中账号 · {providerName}</small>
                     </div>
-                    {quota?.windows.length ? (
+                    {selectedProvider === 'deepseek' ? (
+                      <DeepSeekBalance credits={quota?.credits} />
+                    ) : quota?.windows.length ? (
                       quota.windows.map((w, i) => (
                         <div className="quota-window" key={i}>
                           <div>
@@ -1417,7 +1500,7 @@ export default function App() {
                         </small>
                       </div>
                     )}
-                    {quota?.credits != null && (
+                    {selectedProvider !== 'deepseek' && quota?.credits != null && (
                       <details>
                         <summary>Credits 信息</summary>
                         <pre>{JSON.stringify(quota.credits, null, 2)}</pre>

@@ -1,3 +1,11 @@
+import { DeepSeekAdapter, DEEPSEEK_HARNESS_VERSION } from '../../../packages/provider-deepseek/src/index.ts';
+import { writeKey } from '../../../packages/provider-deepseek/src/credentials.ts';
+import {
+  readGeminiSettings,
+  writeGeminiSettings,
+  type GeminiSettings,
+} from '../../../packages/provider-gemini/src/settings.ts';
+import { GeminiAdapter, ANTIGRAVITY_VERSION } from '../../../packages/provider-gemini/src/index.ts';
 import { randomUUID } from 'node:crypto';
 import { join, normalize, isAbsolute, basename, dirname } from 'node:path';
 import { homedir } from 'node:os';
@@ -34,6 +42,7 @@ import { questionSignature } from '../../../packages/provider-core/src/questions
 export type StoredWorkspace = Workspace & { directoryInfo: WorkspaceDirectory };
 export type ProviderFactory = (cwd: string, codexHome?: string, authHome?: string) => AIProviderAdapter;
 interface Checkpoint {
+  filesOnly?: boolean;
   before: string;
   after?: string;
   previousTurnId: string | null;
@@ -111,6 +120,7 @@ export class Manager {
   private timer: ReturnType<typeof setInterval>;
   private closing = false;
   private loginPending = false;
+  private settingsUpdating = false;
   private takeoverPlans = new Map<
     string,
     {
@@ -129,28 +139,43 @@ export class Manager {
     readonly identity: AgentIdentity,
     readonly config: AgentConfig,
     private factory: ProviderFactory = (cwd) =>
-      config.provider === 'claude'
-        ? new ClaudeAdapter({
+      config.provider === 'deepseek'
+        ? new DeepSeekAdapter({
             cwd,
-            home: config.claudeHome ?? join(config.stateDir, 'claude'),
-            executable: config.claudeExecutable,
+            home: config.deepseekHome ?? join(config.stateDir, 'deepseek'),
+            executable: config.deepseekExecutable,
             taskUmask: config.taskUmask,
           })
-        : config.provider === 'kimi'
-          ? new KimiAdapter({
+        : config.provider === 'antigravity'
+          ? new GeminiAdapter({
               cwd,
-              home: config.kimiHome!,
-              executable: config.kimiExecutable,
+              home: config.antigravityHome ?? join(config.stateDir, 'antigravity'),
+              executable: config.antigravityExecutable,
               taskUmask: config.taskUmask,
             })
-          : new CodexAdapter({
-              cwd,
-              executable: config.codexExecutable,
-              taskUmask: config.taskUmask,
-              codexHome: identity.codexHome,
-              credentialStore: config.codexHome ? 'file' : undefined,
-              authBroker: this.authBroker,
-            }),
+          : config.provider === 'claude'
+            ? new ClaudeAdapter({
+                cwd,
+                home: config.claudeHome ?? join(config.stateDir, 'claude'),
+                executable: config.claudeExecutable,
+                taskUmask: config.taskUmask,
+              })
+            : config.provider === 'kimi'
+              ? new KimiAdapter({
+                  cwd,
+                  home: config.kimiHome!,
+                  executable: config.kimiExecutable,
+                  taskUmask: config.taskUmask,
+                })
+              : new CodexAdapter({
+                  cwd,
+                  executable: config.codexExecutable,
+                  taskUmask: config.taskUmask,
+                  codexHome: identity.codexHome,
+                  credentialStore: config.codexHome ? 'file' : undefined,
+                  authBroker: this.authBroker,
+                }),
+    private readonly observeRun?: (workspace: StoredWorkspace, run: Run) => Promise<void>,
   ) {
     if (config.authHome && (!config.provider || config.provider === 'codex'))
       this.authBroker = new CodexAuthBroker({ home: config.authHome, executable: config.codexExecutable });
@@ -261,7 +286,7 @@ export class Manager {
     const workspace = this.workspace(workspaceId);
     await this.files.validate(workspace.directoryInfo);
     const adapter = await this.provider(workspaceId);
-    if (!adapter.listNativeSessions || !adapter.readNativeSession)
+    if (!adapter.listNativeSessions || (!adapter.readNativeSession && !adapter.readNativeSessionMetadata))
       throw new AppError('unsupported_feature', '当前 Codex 版本不支持共享会话', 409);
     return { workspace, adapter };
   }
@@ -375,7 +400,9 @@ export class Manager {
         .list<Conversation>('conversation')
         .find(
           (c) =>
-            c.workspaceId === workspaceId && c.providerId === 'codex' && c.providerSessionId === threadId,
+            c.workspaceId === workspaceId &&
+            c.providerId === (this.config.provider ?? 'codex') &&
+            c.providerSessionId === threadId,
         );
       if (existing) return existing;
       const conversation: Conversation = {
@@ -544,6 +571,9 @@ export class Manager {
       imageIds?: string[];
     },
   ) {
+    if (this.config.provider === 'deepseek' && input.permissionMode !== 'full-access')
+      throw new AppError('unsupported_feature', 'DeepSeek（测试）仅支持完全访问，不能选择其他权限模式', 400);
+    if (this.settingsUpdating) throw new AppError('run_conflict', '正在保存账号配置，请稍后发送', 409);
     const conversation = this.conversation(conversationId),
       workspace = this.workspace(conversation.workspaceId);
     // Idempotency is durable and checked before account/network probes.
@@ -560,8 +590,20 @@ export class Manager {
         const run: Run = {
           accountLabel: this.config.accountLabel ?? '跟随 Codex',
           accountProfile:
-            (this.config.claudeHome ?? this.config.kimiHome ?? this.config.authHome)
-              ? basename(dirname((this.config.claudeHome ?? this.config.kimiHome ?? this.config.authHome)!))
+            (this.config.deepseekHome ??
+            this.config.antigravityHome ??
+            this.config.claudeHome ??
+            this.config.kimiHome ??
+            this.config.authHome)
+              ? basename(
+                  dirname(
+                    (this.config.deepseekHome ??
+                      this.config.antigravityHome ??
+                      this.config.claudeHome ??
+                      this.config.kimiHome ??
+                      this.config.authHome)!,
+                  ),
+                )
               : 'default',
           id: randomUUID(),
           workspaceId: workspace.id,
@@ -617,7 +659,12 @@ export class Manager {
     }
     const entry = this.active.get(workspace.id);
     const active = entry && this.store.get<Run>('run', entry.runId);
-    if (!active || active.conversationId !== conversationId) {
+    if (
+      !active ||
+      active.conversationId !== conversationId ||
+      (['antigravity', 'deepseek'].includes(this.config.provider ?? '') &&
+        !this.providers.get(workspace.id)?.adapter.steerRun)
+    ) {
       const run = await this.submit(conversationId, input);
       const result = { runId: run.id, delivery: 'queued' };
       this.store.put('questionReply', input.clientRequestId, { fingerprint, result });
@@ -871,27 +918,31 @@ export class Manager {
       let ownedSource = false;
       let applying = false;
       try {
-        if (!conversation.providerSessionId || !adapter.readNativeSession || !adapter.forkSession)
-          throw new AppError('unsupported_feature', '当前提供方不支持安全恢复对话', 409);
-        const options = {
-          cwd: workspace.canonicalRoot,
-          model: run.model,
-          permissionMode: 'read-only' as const,
-        };
-        // Hold the source's native writer lease too; an IDE-owned thread must refuse rollback.
-        await adapter.resumeSession({ id: conversation.providerSessionId }, options);
-        ownedSource = true;
-        const history = await adapter.readNativeSession(conversation.providerSessionId);
-        if (
-          history.turns.at(-1)?.id !== run.providerTurnId ||
-          history.turns.some((t) => t.state === 'running' || t.state === 'unknown')
-        )
-          throw new AppError('rollback_conflict', '原生对话已发生变化，请刷新后检查', 409);
-        this.store.put('restoreOperation', input.clientRequestId, { fingerprint, state: 'preparing' });
-        const branch = checkpoint.previousTurnId
-          ? await adapter.forkSession(conversation.providerSessionId, checkpoint.previousTurnId, options)
-          : await adapter.createSession(options);
-        branchId = branch.id;
+        if (!checkpoint.filesOnly) {
+          if (!conversation.providerSessionId || !adapter.readNativeSession || !adapter.forkSession)
+            throw new AppError('unsupported_feature', '当前提供方不支持安全恢复对话', 409);
+          const options = {
+            cwd: workspace.canonicalRoot,
+            model: run.model,
+            permissionMode: 'read-only' as const,
+          };
+          // Hold the source's native writer lease too; an IDE-owned thread must refuse rollback.
+          await adapter.resumeSession({ id: conversation.providerSessionId }, options);
+          ownedSource = true;
+          const history = await adapter.readNativeSession(conversation.providerSessionId);
+          if (
+            history.turns.at(-1)?.id !== run.providerTurnId ||
+            history.turns.some((t) => t.state === 'running' || t.state === 'unknown')
+          )
+            throw new AppError('rollback_conflict', '原生对话已发生变化，请刷新后检查', 409);
+          this.store.put('restoreOperation', input.clientRequestId, { fingerprint, state: 'preparing' });
+          const branch = checkpoint.previousTurnId
+            ? await adapter.forkSession(conversation.providerSessionId, checkpoint.previousTurnId, options)
+            : await adapter.createSession(options);
+          branchId = branch.id;
+        } else {
+          this.store.put('restoreOperation', input.clientRequestId, { fingerprint, state: 'preparing' });
+        }
         this.store.put('restoreBlocked', workspace.id, {
           operationId: input.clientRequestId,
           runId,
@@ -908,8 +959,8 @@ export class Manager {
           restored = {
             ...conversation,
             id: randomUUID(),
-            title: `${conversation.title} · 回滚前`,
-            providerSessionId: branch.id,
+            title: `${conversation.title} · ${checkpoint.filesOnly ? '文件已恢复' : '回滚前'}`,
+            providerSessionId: branchId ?? null,
             createdAt: new Date().toISOString(),
           };
           this.store.put('conversation', restored.id, restored);
@@ -918,7 +969,10 @@ export class Manager {
             { conversation: restored },
             { workspaceId: workspace.id, conversationId: restored.id },
           );
-          run.restorePoint = { state: 'restored' };
+          run.restorePoint = {
+            state: 'restored',
+            ...(checkpoint.filesOnly ? { scope: 'files' as const } : {}),
+          };
           this.state(run, run.state);
           this.store.put('restoreOperation', input.clientRequestId, {
             fingerprint,
@@ -1036,6 +1090,8 @@ export class Manager {
       }
       this.active.set(run.workspaceId, { runId: run.id, release });
       this.store.transaction(() => this.state(run, 'starting'));
+      await this.observeRun?.(workspace, run);
+      if (await this.cancelBeforeDispatch(run)) return;
       // History browsing may have started this idle process before an external login change.
       // Only replace disposable execution providers, before the new task obtains a session.
       const previous = this.providers.get(run.workspaceId);
@@ -1045,7 +1101,13 @@ export class Manager {
       }
       const adapter = await this.provider(run.workspaceId);
       const account = await adapter.getAccount();
-      if (this.config.provider === 'claude') {
+      if (this.config.provider === 'deepseek') {
+        if (!account.authenticated || account.authMode !== 'deepseek-api-key')
+          throw new AppError('auth_required', '请先配置 DeepSeek API Key', 401);
+      } else if (this.config.provider === 'antigravity') {
+        if (!account.authenticated || account.authMode !== 'google-antigravity')
+          throw new AppError('auth_required', '请先登录 Gemini（测试）的 Google 账号', 401);
+      } else if (this.config.provider === 'claude') {
         if (!account.authenticated || account.authMode !== 'claude-code')
           throw new AppError('auth_required', '请先登录此 Claude 订阅账号', 401);
       } else if (this.config.provider === 'kimi') {
@@ -1087,28 +1149,37 @@ export class Manager {
         conversationId: conversation.id,
         account,
         version:
-          this.config.provider === 'claude'
-            ? CLAUDE_VERSION
-            : this.config.provider === 'kimi'
-              ? KIMI_VERSION
-              : SUPPORTED_CODEX_VERSION,
+          this.config.provider === 'deepseek'
+            ? DEEPSEEK_HARNESS_VERSION
+            : this.config.provider === 'antigravity'
+              ? ANTIGRAVITY_VERSION
+              : this.config.provider === 'claude'
+                ? CLAUDE_VERSION
+                : this.config.provider === 'kimi'
+                  ? KIMI_VERSION
+                  : SUPPORTED_CODEX_VERSION,
         createdAt: new Date().toISOString(),
       });
       if (await this.cancelBeforeDispatch(run)) return;
       try {
-        if (!adapter.forkSession) throw new Error('此提供方暂不支持文件回滚');
-        if (hadSession && !adapter.readNativeSession) throw new Error('提供方不支持读取原生历史');
+        const filesOnly = ['antigravity', 'deepseek'].includes(this.config.provider ?? '');
+        if (!filesOnly && !adapter.forkSession) throw new Error('此提供方暂不支持文件回滚');
+        if (!filesOnly && hadSession && !adapter.readNativeSession)
+          throw new Error('提供方不支持读取原生历史');
         const history =
-          hadSession && adapter.readNativeSession ? await adapter.readNativeSession(session.id) : null;
+          !filesOnly && hadSession && adapter.readNativeSession
+            ? await adapter.readNativeSession(session.id)
+            : null;
         // Newly created sessions may not yet have a persisted history.
         const checkpoint: Checkpoint = {
           before: randomUUID(),
+          ...(filesOnly ? { filesOnly: true } : {}),
           previousTurnId: history?.turns.at(-1)?.id ?? null,
         };
         if (history?.truncated) throw new Error('对话记录不完整，不能建立恢复点');
         await this.files.checkpoint(workspace.directoryInfo, 'capture', { id: checkpoint.before });
         this.store.put('checkpoint', run.id, checkpoint);
-        run.restorePoint = { state: 'preparing' };
+        run.restorePoint = { state: 'preparing', ...(filesOnly ? { scope: 'files' as const } : {}) };
       } catch (error) {
         run.restorePoint = { state: 'unavailable', reason: (error as Error).message };
       }
@@ -1180,7 +1251,7 @@ export class Manager {
             const after = randomUUID();
             await this.files.checkpoint(this.workspace(workspaceId).directoryInfo, 'capture', { id: after });
             this.store.put('checkpoint', entry.runId, { ...checkpoint, after });
-            restorePoint = { state: 'ready' };
+            restorePoint = { state: 'ready', ...(checkpoint.filesOnly ? { scope: 'files' as const } : {}) };
           } catch (error) {
             restorePoint = { state: 'unavailable', reason: (error as Error).message };
           }
@@ -1565,7 +1636,7 @@ export class Manager {
     this.accountReader.invalidate();
     return { ok: true };
   }
-  assertAccountDeletable() {
+  assertAccountDeletable(message = '此账号有活动任务或正在处理会话，请等待结束后删除') {
     if (
       this.maintenance.size ||
       this.active.size ||
@@ -1575,9 +1646,40 @@ export class Manager {
       this.executing.size ||
       this.store.list<Run>('run').some((r) => !terminalStates.includes(r.state))
     )
-      throw new AppError('run_conflict', '此账号有活动任务或正在处理会话，请等待结束后删除', 409);
+      throw new AppError('run_conflict', message, 409);
+  }
+  async setDeepSeekKey(apiKey: string) {
+    if (this.config.provider !== 'deepseek')
+      throw new AppError('unsupported_feature', '当前账号不是 DeepSeek', 404);
+    if (this.settingsUpdating || this.loginPending)
+      throw new AppError('run_conflict', '账号正在处理请求，请稍后重试', 409);
+    this.assertAccountDeletable('账号仍有活动任务，请等待结束后修改密钥');
+    this.settingsUpdating = true;
+    try {
+      await writeKey(this.config.deepseekHome ?? join(this.config.stateDir, 'deepseek'), apiKey);
+      this.accountReader.invalidate();
+      return { ok: true };
+    } finally {
+      this.settingsUpdating = false;
+    }
+  }
+  async geminiSettings(input?: Pick<GeminiSettings, 'revision' | 'allowedCommands' | 'deniedCommands'>) {
+    if (this.config.provider !== 'antigravity')
+      throw new AppError('unsupported_feature', '当前账号不是 Gemini', 404);
+    const home = this.config.antigravityHome ?? join(this.config.stateDir, 'antigravity');
+    if (!input) return readGeminiSettings(home);
+    if (this.settingsUpdating || this.loginPending)
+      throw new AppError('run_conflict', '账号正在处理请求，请稍后保存', 409);
+    this.assertAccountDeletable('账号仍在执行任务或保存恢复点，请稍后修改权限');
+    this.settingsUpdating = true;
+    try {
+      return await writeGeminiSettings(home, input);
+    } finally {
+      this.settingsUpdating = false;
+    }
   }
   async login() {
+    if (this.settingsUpdating) throw new AppError('run_conflict', '正在保存账号权限，请稍后登录', 409);
     if (this.loginPending) {
       const adapter = await this.provider();
       return adapter.beginLogin!();

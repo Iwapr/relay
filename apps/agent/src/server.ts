@@ -1,10 +1,11 @@
+import { geminiSettingsInput } from '../../../packages/provider-gemini/src/settings.ts';
 import Fastify from 'fastify';
 import { z, ZodError } from 'zod';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
-import { dirname, join, relative } from 'node:path';
-import { watch } from 'chokidar';
+import { dirname, join } from 'node:path';
+import { WorkspaceWatches } from './workspace-watches.ts';
 import {
   AppError,
   answerInput,
@@ -60,6 +61,11 @@ export async function buildAgent(
       identity.codexHome,
       ...(config.kimiHome ? [config.kimiHome] : []),
       join(identity.home, '.kimi-code'),
+      ...(config.deepseekHome ? [config.deepseekHome] : []),
+      join(config.stateDir, 'deepseek'),
+      ...(config.antigravityHome ? [config.antigravityHome] : []),
+      join(config.stateDir, 'antigravity'),
+      join(identity.home, '.gemini', 'antigravity-cli'),
       ...(config.claudeHome ? [config.claudeHome] : []),
       join(config.stateDir, 'claude'),
       join(identity.home, '.claude'),
@@ -79,17 +85,13 @@ export async function buildAgent(
     machineId: identity.machineId,
     sharedLockDirectory: config.sharedLockDirectory,
   });
-  const manager = new Manager(store, files, locks, identity, config, factory);
   const transfers = await Transfers.open(config.stateDir, files);
   const terminals = new Terminals();
   let accounts: ReturnType<typeof registerAccounts> | undefined;
   const app = Fastify({ logger: false, bodyLimit: 256 * 1024 });
-  const watchers = new Map<string, ReturnType<typeof watch>>();
-  const previewWatchers = new Map<string, ReturnType<typeof watch>>();
   const streams = new Set<() => void>();
-  const watcherTimers = new Set<ReturnType<typeof setTimeout>>();
-  const recordChanges = (w: StoredWorkspace, paths: string[]) => {
-    const visible = paths.filter((p) => files.isVisible(w.directoryInfo, p));
+  const recordChanges = (w: StoredWorkspace, paths: string[], preview = false) => {
+    const visible = paths.filter((p) => preview || files.isVisible(w.directoryInfo, p));
     if (!visible.length) return;
     store.transaction(() => {
       for (const p of visible) {
@@ -105,66 +107,10 @@ export async function buildAgent(
       store.emit('files.changed', { paths: visible }, { workspaceId: w.id });
     });
   };
-  const previewWatch = async (w: StoredWorkspace, p: string) => {
-    if (!files.isVisible(w.directoryInfo, p)) return;
-    const key = `${w.id}:${p}`;
-    if (previewWatchers.has(key)) return;
-    // Separate watches deliberately bypass the tree dependency/depth exclusions.
-    if (previewWatchers.size >= 32) {
-      const oldest = previewWatchers.entries().next().value;
-      if (oldest) {
-        previewWatchers.delete(oldest[0]);
-        await oldest[1].close();
-      }
-    }
-    const watcher = watch(join(w.canonicalRoot, p), {
-      ignoreInitial: true,
-      followSymlinks: false,
-      awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
-    });
-    watcher.on('all', () => recordChanges(w, [p]));
-    watcher.on('error', () => {});
-    previewWatchers.set(key, watcher);
-  };
-  const watchWorkspace = (w: StoredWorkspace) => {
-    if (watchers.has(w.id)) return;
-    const watcher = watch(w.canonicalRoot, {
-      ignoreInitial: true,
-      depth: 5,
-      followSymlinks: false,
-      ignored: (path) => {
-        const p = relative(w.canonicalRoot, path);
-        return (
-          (p !== '' && !files.isVisible(w.directoryInfo, p)) ||
-          /(^|\/)(node_modules|\.cache|\.runtime)(\/|$)/.test(path)
-        );
-      },
-      awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 100 },
-    });
-    let changed = new Set<string>(),
-      timer: ReturnType<typeof setTimeout> | undefined;
-    watcher.on('all', (_event, path) => {
-      const p = relative(w.canonicalRoot, path);
-      if (!p || p.startsWith('..') || !files.isVisible(w.directoryInfo, p)) return;
-      changed.add(p);
-      if (changed.size > 500) changed = new Set([...changed].slice(-500));
-      if (timer) {
-        clearTimeout(timer);
-        watcherTimers.delete(timer);
-      }
-      timer = setTimeout(() => {
-        watcherTimers.delete(timer!);
-        recordChanges(w, [...changed]);
-        changed.clear();
-      }, 600);
-      watcherTimers.add(timer);
-    });
-    watcher.on('error', () =>
-      store.emit('provider.warning', { message: '文件监听失败，请手动刷新文件列表' }, { workspaceId: w.id }),
-    );
-    watchers.set(w.id, watcher);
-  };
-  for (const w of store.list<StoredWorkspace>('workspace')) watchWorkspace(w);
+  const watches = new WorkspaceWatches(store, files, recordChanges);
+  const manager = new Manager(store, files, locks, identity, config, factory, (workspace, run) =>
+    watches.observeRun(workspace, run),
+  );
   app.addHook('onRequest', async (req, reply) => {
     reply.header('Cache-Control', 'no-store').header('X-Content-Type-Options', 'nosniff');
     const received = req.headers.authorization ?? '',
@@ -210,6 +156,7 @@ export async function buildAgent(
       environmentProfile: '远端用户环境',
       taskUmask: config.taskUmask,
       sharedLocks: !!config.sharedLockDirectory,
+      fileWatches: watches.status(),
     },
   }));
   app.get('/fs/roots', async () => ({ roots: await files.roots() }));
@@ -232,7 +179,6 @@ export async function buildAgent(
       .strict()
       .parse(req.body);
     const workspace = await manager.openWorkspace(body.path);
-    watchWorkspace(workspace);
     return { workspace };
   });
   const terminalSize = z
@@ -273,6 +219,30 @@ export async function buildAgent(
   app.post('/workspaces/:w/terminals/:id/close', async (req) => {
     terminals.close(params(req).w, params(req).id);
     return { ok: true };
+  });
+  app.post('/workspaces/:w/watch', async (req, reply) => {
+    const body = z
+      .discriminatedUnion('action', [
+        z.object({ action: z.literal('release'), id: z.uuid() }).strict(),
+        z
+          .object({
+            action: z.literal('renew'),
+            id: z.uuid(),
+            kind: z.enum(['directory', 'file']),
+            path: z.string().max(4096),
+          })
+          .strict(),
+      ])
+      .parse(req.body);
+    const workspace = manager.workspace(params(req).w);
+    let created = false;
+    if (body.action === 'release') watches.releaseView(workspace.id, body.id);
+    else {
+      const target = await files.watchTarget(workspace.directoryInfo, body.path, body.kind);
+      if (!reply.raw.destroyed)
+        created = await watches.view(workspace, body.id, body.kind, body.path, target);
+    }
+    return { ok: true, created };
   });
   app.get('/workspaces/:w/tree', async (req) => {
     const q = query(req);
@@ -334,7 +304,6 @@ export async function buildAgent(
     const q = query(req),
       w = manager.workspace(params(req).w),
       meta = await files.metadata(w.directoryInfo, q.path ?? '');
-    await previewWatch(w, q.path ?? '');
     return meta;
   });
   app.get('/workspaces/:w/file', async (req, reply) => {
@@ -344,7 +313,6 @@ export async function buildAgent(
       version: q.version,
       range: req.headers.range,
     });
-    if (q.path) await previewWatch(w, q.path);
     for (const [key, value] of Object.entries(result.headers)) reply.header(key, value);
     return reply.code(result.statusCode).send(result.body);
   });
@@ -414,11 +382,11 @@ export async function buildAgent(
     const conversation = await manager.importNativeSession(params(req).w, input.threadId);
     return { conversation, workspace: manager.workspace(conversation.workspaceId) };
   });
-  app.get('/providers/codex/sessions', async (req) => {
+  app.get('/providers/' + (config.provider ?? 'codex') + '/sessions', async (req) => {
     const input = z.object({ cursor: z.string().max(4096).optional() }).parse(req.query);
     return manager.nativeSessions(undefined, input.cursor, 'all');
   });
-  app.post('/providers/codex/sessions/import', async (req) => {
+  app.post('/providers/' + (config.provider ?? 'codex') + '/sessions/import', async (req) => {
     const input = z
       .object({ threadId: z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/) })
       .strict()
@@ -525,7 +493,15 @@ export async function buildAgent(
           {
             id: config.provider ?? 'codex',
             name:
-              config.provider === 'claude' ? 'Claude' : config.provider === 'kimi' ? 'Kimi Code' : 'Codex',
+              config.provider === 'deepseek'
+                ? 'DeepSeek（测试）'
+                : config.provider === 'antigravity'
+                  ? 'Gemini（测试）'
+                  : config.provider === 'claude'
+                    ? 'Claude'
+                    : config.provider === 'kimi'
+                      ? 'Kimi Code'
+                      : 'Codex',
             capabilities: p.capabilities(),
           },
         ],
@@ -543,9 +519,30 @@ export async function buildAgent(
   });
   app.get(providerPath + '/models', async () => ({ models: await manager.accountReader.read('models') }));
   app.get(providerPath + '/quota', async () => ({ quota: await manager.accountReader.read('quota') }));
+  if (config.provider === 'deepseek') {
+    app.post(providerPath + '/credentials', async (req) => {
+      const { apiKey } = z
+        .object({
+          apiKey: z
+            .string()
+            .trim()
+            .max(4096)
+            .regex(/^[^\r\n\x00]*$/),
+        })
+        .strict()
+        .parse(req.body);
+      return manager.setDeepSeekKey(apiKey);
+    });
+  }
+  if (config.provider === 'antigravity') {
+    app.get(providerPath + '/settings', async () => manager.geminiSettings());
+    app.post(providerPath + '/settings', async (req) =>
+      manager.geminiSettings(geminiSettingsInput.parse(req.body)),
+    );
+  }
   app.post(providerPath + '/login', async () => manager.login());
   app.post(providerPath + '/login/cancel', async () => manager.cancelLogin());
-  if (config.provider === 'claude')
+  if (config.provider === 'claude' || config.provider === 'antigravity')
     app.post(providerPath + '/login/code', async (req) => {
       const input = z
         .object({
@@ -610,13 +607,11 @@ export async function buildAgent(
   app.addHook('onClose', async () => {
     clearInterval(retention);
     terminals.dispose();
-    await Promise.all([...watchers.values(), ...previewWatchers.values()].map((w) => w.close()));
-    for (const timer of watcherTimers) clearTimeout(timer);
-    watcherTimers.clear();
+    await watches.close();
     await manager.close();
     await transfers.close();
     store.prune();
     store.close();
   });
-  return { app, manager, store, identity, files };
+  return { app, manager, store, identity, files, watches };
 }

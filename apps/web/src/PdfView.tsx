@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ZoomIn, ZoomOut, Maximize, Minimize, ChevronUp, ChevronDown } from 'lucide-react';
-import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
-import { EventBus, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
+import { AnnotationMode, getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
+import { EventBus, LinkTarget, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './pdf-view.css';
@@ -56,13 +56,20 @@ export default function PdfView({
   useEffect(() => {
     const initialPage = saved(stateKey + ':page', 1);
     const eventBus = new EventBus();
+    const linkService = new PDFLinkService({
+      eventBus,
+      externalLinkTarget: LinkTarget.BLANK,
+      ignoreDestinationZoom: true,
+    });
     const v = new PDFViewer({
       container: scroll.current!,
       viewer: pages.current!,
       eventBus,
-      annotationMode: 0,
+      linkService,
+      annotationMode: AnnotationMode.ENABLE,
       textLayerMode: 1,
     });
+    linkService.setViewer(v);
     viewer.current = v;
     v.scrollMode = 0;
     let disposed = false;
@@ -100,6 +107,7 @@ export default function PdfView({
       .then((doc) => {
         if (disposed) return;
         setPdf({ numPages: doc.numPages });
+        linkService.setDocument(doc);
         v.setDocument(doc);
       })
       .catch((e) => {
@@ -108,6 +116,7 @@ export default function PdfView({
     return () => {
       disposed = true;
       observer.disconnect();
+      linkService.setDocument(null);
       v.setDocument(null as never);
       viewer.current = null;
       void task.destroy();

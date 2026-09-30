@@ -44,7 +44,9 @@ test('remote configuration persists, restores after restart, and disables only o
       },
       detected,
     );
-    assert.equal((await manager.status()).enabled, false);
+    const initialStatus = await manager.status();
+    assert.equal(initialStatus.enabled, false);
+    assert.equal(initialStatus.gatewayPort, f.config.port);
     const result = await manager.configure({ enabled: true, relay });
     assert.equal(result.proxyOrigin, 'https://relay.example.com:1443');
     assert.equal(applied.tailscaleHost, '100.64.0.1');

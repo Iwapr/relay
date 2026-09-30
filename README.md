@@ -2,7 +2,7 @@
 
 **把自己的电脑变成工作台，在电脑和手机上继续工作。**
 
-浏览器中使用 Codex、Claude 和 Kimi，管理对话、文件与终端。文件和工作台数据保存在你的服务器上；模型请求仍由对应提供方处理。本项目代码由AI生成。
+浏览器中使用 Codex、Claude、Kimi、Gemini（测试）和 DeepSeek（测试），管理对话、文件与终端。文件和工作台数据保存在你的服务器上；模型请求仍由对应提供方处理。本项目代码由AI生成。
 
 
 ## 能做什么
@@ -69,6 +69,10 @@ cd relay
 
 ## 文档
 
+- [DeepSeek（测试）：官方 Harness + 官方 API，固定完全访问](docs/deepseek-test.md)
+
 [快速安装](docs/quickstart.md) · [完整使用手册](docs/manual.md) · [部署与备份](docs/deployment.md) · [共享项目](docs/shared-projects.md) · [新增用户](docs/add-relay-user.md) · [故障排查](docs/troubleshooting.md)
 
 [架构](docs/architecture.md) · [协议兼容性](docs/protocol-compatibility.md) · [实施状态](docs/implementation-status.md) · [设计规格](plan.md) · [API](docs/openapi.json) · [发布说明](docs/releases/0.2.0.md)
+
+Gemini（测试）通过官方 Antigravity CLI 使用 Google 订阅登录。安装和功能限制见 [Gemini 测试版说明](docs/gemini-test.md)。

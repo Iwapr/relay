@@ -3,6 +3,7 @@ import { FileText, Download, RefreshCw } from 'lucide-react';
 import { ApiError, api, base, fileUrl, save, saved, type Metadata } from './api';
 import { Markdown } from './Markdown';
 import { HtmlPreview } from './HtmlPreview';
+import { useFileWatch } from './use-file-watch';
 const PdfView = lazy(() => import('./PdfView'));
 const CodePreview = lazy(() => import('./CodePreview').then((m) => ({ default: m.CodePreview })));
 export interface Reference {
@@ -36,9 +37,12 @@ export function Preview({
   const content = useRef<HTMLDivElement>(null),
     lastRevision = useRef(revision);
   const stateKey = connection + ':' + workspace + ':' + path;
+  const panel = useRef<HTMLElement>(null);
+  const [watchRevision, setWatchRevision] = useState(0);
+  useFileWatch(panel, connection, workspace, 'file', path, () => setWatchRevision((r) => r + 1));
   const isHtml = meta?.preview === 'text' && /\.html?$/i.test(path);
   useEffect(() => {
-    if (revision === lastRevision.current) return;
+    if (revision === lastRevision.current && !watchRevision) return;
     lastRevision.current = revision;
     if (!path || !meta) return;
     const abort = new AbortController();
@@ -52,7 +56,7 @@ export function Preview({
       })
       .catch(() => {});
     return () => abort.abort();
-  }, [revision, path, meta?.version, connection, workspace]);
+  }, [revision, watchRevision, path, meta?.version, connection, workspace]);
   useEffect(() => {
     if (!path) return;
     const abort = new AbortController();
@@ -101,7 +105,7 @@ export function Preview({
   }, [connection, workspace, path, reload]);
   if (!path)
     return (
-      <section className="preview-panel">
+      <section ref={panel} className="preview-panel">
         <div className="panel-heading">
           <span>文档预览</span>
           <span className="subtle">你的远端工作空间</span>
@@ -125,7 +129,7 @@ export function Preview({
       </section>
     );
   return (
-    <section className="preview-panel">
+    <section ref={panel} className="preview-panel">
       <div className="panel-heading">
         <span className="truncate">
           <FileText size={15} />
