@@ -1,3 +1,4 @@
+import { TaskUsage } from './FactoryUsage';
 import { mergeHistoryMessages } from './history-messages';
 import { deduplicateRecoveredQuestions } from './question-messages';
 import { questionBody } from '../../../packages/provider-core/src/questions.ts';
@@ -97,12 +98,26 @@ export function InteractionCard({
       {!p.command && !questions.length && <pre>{JSON.stringify(p, null, 2)}</pre>}
       {questions.map((q: any) => (
         <div className="question" key={q.id}>
-          <label>{q.question ?? q.header}</label>
+          <label>
+            {q.question ?? q.header}
+            {q.multiSelect ? '（可多选）' : ''}
+          </label>
           {q.options?.map((o: any) => (
             <button
-              className={answers[q.id]?.[0] === o.label ? 'selected' : ''}
+              className={answers[q.id]?.includes(o.label) ? 'selected' : ''}
+              aria-pressed={answers[q.id]?.includes(o.label) ?? false}
+              disabled={busy}
               key={o.label}
-              onClick={() => setAnswers((a) => ({ ...a, [q.id]: [o.label] }))}
+              onClick={() =>
+                setAnswers((a) => ({
+                  ...a,
+                  [q.id]: q.multiSelect
+                    ? a[q.id]?.includes(o.label)
+                      ? a[q.id].filter((value) => value !== o.label)
+                      : [...(a[q.id] ?? []), o.label]
+                    : [o.label],
+                }))
+              }
             >
               {o.label}
               <small>{o.description}</small>
@@ -112,7 +127,7 @@ export function InteractionCard({
             aria-label={q.question ?? q.header}
             readOnly={p.choiceOnly === true}
             placeholder={p.choiceOnly ? '请选择上方选项' : '输入你的回答'}
-            value={answers[q.id]?.[0] ?? ''}
+            value={q.multiSelect ? (answers[q.id] ?? []).join(', ') : (answers[q.id]?.[0] ?? '')}
             onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: [e.target.value] }))}
           />
         </div>
@@ -163,7 +178,7 @@ export function Chat({
   onShowChat,
   toolbarVisible = true,
 }: {
-  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek';
+  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek' | 'factory';
   connection: string;
   workspace?: Workspace;
   conversations: Conversation[];
@@ -185,15 +200,17 @@ export function Chat({
   const accountReady =
     account?.authenticated === true &&
     account.authMode ===
-      (provider === 'deepseek'
-        ? 'deepseek-api-key'
-        : provider === 'antigravity'
-          ? 'google-antigravity'
-          : provider === 'claude'
-            ? 'claude-code'
-            : provider === 'kimi'
-              ? 'kimi-code'
-              : 'chatgpt');
+      (provider === 'factory'
+        ? 'factory-api-key'
+        : provider === 'deepseek'
+          ? 'deepseek-api-key'
+          : provider === 'antigravity'
+            ? 'google-antigravity'
+            : provider === 'claude'
+              ? 'claude-code'
+              : provider === 'kimi'
+                ? 'kimi-code'
+                : 'chatgpt');
   const key = connection + ':' + (workspace?.id ?? 'none');
   const [conversation, setConversation] = useState(() => saved(key + ':conversation', '')),
     [draft, setDraft] = useState(''),
@@ -627,15 +644,17 @@ export function Chat({
         className="chat-toolbar-button"
         title="历史对话"
         aria-label={
-          provider === 'deepseek'
-            ? 'DeepSeek（测试）会话'
-            : provider === 'antigravity'
-              ? 'Gemini（测试）会话'
-              : provider === 'claude'
-                ? 'Claude 会话'
-                : provider === 'kimi'
-                  ? 'Kimi 会话'
-                  : 'Codex 会话'
+          provider === 'factory'
+            ? 'Droid（测试）会话'
+            : provider === 'deepseek'
+              ? 'DeepSeek（测试）会话'
+              : provider === 'antigravity'
+                ? 'Gemini（测试）会话'
+                : provider === 'claude'
+                  ? 'Claude 会话'
+                  : provider === 'kimi'
+                    ? 'Kimi 会话'
+                    : 'Codex 会话'
         }
         disabled={!online}
         onClick={() => {
@@ -781,19 +800,22 @@ export function Chat({
                     )}
                     <ReplyPanel
                       providerName={
-                        provider === 'deepseek'
-                          ? 'DeepSeek（测试）'
-                          : provider === 'antigravity'
-                            ? 'Gemini（测试）'
-                            : provider === 'claude'
-                              ? 'Claude'
-                              : provider === 'kimi'
-                                ? 'Kimi'
-                                : 'Codex'
+                        provider === 'factory'
+                          ? 'Droid（测试）'
+                          : provider === 'deepseek'
+                            ? 'DeepSeek（测试）'
+                            : provider === 'antigravity'
+                              ? 'Gemini（测试）'
+                              : provider === 'claude'
+                                ? 'Claude'
+                                : provider === 'kimi'
+                                  ? 'Kimi'
+                                  : 'Codex'
                       }
                       state={run.state}
                       model={run.model}
                     >
+                      <TaskUsage usage={run.usage} />
                       <ToolHistory
                         records={runMessages
                           .filter((m) => m.kind === 'tool')
@@ -1073,7 +1095,9 @@ export function Chat({
                           ? '工具审批'
                           : '可编辑'}
                     </option>
-                    <option value="full-access">完全访问</option>
+                    <option value="full-access">
+                      {provider === 'factory' ? '自动批准（Factory 策略仍生效）' : '完全访问'}
+                    </option>
                   </select>
                 </label>
               )}
@@ -1136,17 +1160,25 @@ export function Chat({
         {provider !== 'codex' && (
           <details className="composer-help" key={provider}>
             <summary>
-              {provider === 'deepseek'
-                ? 'DeepSeek（测试）'
-                : provider === 'antigravity'
-                  ? 'Gemini（测试）'
-                  : provider === 'claude'
-                    ? 'Claude'
-                    : 'Kimi'}{' '}
+              {provider === 'factory'
+                ? 'Droid（测试）'
+                : provider === 'deepseek'
+                  ? 'DeepSeek（测试）'
+                  : provider === 'antigravity'
+                    ? 'Gemini（测试）'
+                    : provider === 'claude'
+                      ? 'Claude'
+                      : 'Kimi'}{' '}
               使用说明
             </summary>
             <p>
-              {provider === 'deepseek' ? (
+              {provider === 'factory' ? (
+                <>
+                  使用 Factory 官方 Droid
+                  和模型。规划模式不是只读沙箱，批准计划后可执行；工具审批会在需要时询问，自动批准仍受 Factory
+                  策略限制。支持图片的模型可上传图片。
+                </>
+              ) : provider === 'deepseek' ? (
                 <>
                   使用 DeepSeek 官方 Harness 和官方 API，按量计费。仅支持完全访问：可读写当前 Linux
                   用户可访问的文件并执行命令，无沙箱、无需逐次审批。暂不支持图片和交互式提问；回复按模型步骤显示。

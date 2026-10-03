@@ -13,3 +13,7 @@ artifacts/
 
 __pycache__/
 *.pyc
+
+# Local network investigations contain private infrastructure details.
+docs/reports/factory-proxy-aba-2026-10-02.md
+docs/reports/factory-proxy-nodes-2026-10-02.md

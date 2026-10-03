@@ -29,10 +29,12 @@
     "tailscale": "tsx scripts/tailscale.ts",
     "docs:media": "bash scripts/record-media.sh",
     "install:gemini": "tsx scripts/install-gemini.ts",
-    "install:deepseek": "tsx scripts/install-deepseek.ts"
+    "install:deepseek": "tsx scripts/install-deepseek.ts",
+    "install:factory": "tsx scripts/install-factory.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "2.1.280",
+    "@factory/droid-sdk": "0.9.1",
     "@fastify/cookie": "11.1.2",
     "@fastify/static": "10.1.4",
     "@moonshot-ai/kimi-code": "2.0.2",

@@ -376,7 +376,7 @@ route(
         label: { type: 'string', minLength: 1, maxLength: 60 },
         provider: {
           type: 'string',
-          enum: ['codex', 'kimi', 'claude', 'antigravity', 'deepseek'],
+          enum: ['codex', 'kimi', 'claude', 'antigravity', 'deepseek', 'factory'],
           default: 'codex',
         },
       },
@@ -430,6 +430,20 @@ route(
   'post',
   c + '/accounts/{accountId}/providers/deepseek/credentials',
   '验证并保存 DeepSeek 官方 API Key；空字符串移除密钥；活动任务期间拒绝修改，不回显密钥',
+  {
+    request: obj({ apiKey: { type: 'string', maxLength: 4096, writeOnly: true } }, ['apiKey']),
+  },
+);
+for (const name of ['account', 'models', 'quota'])
+  route(
+    'get',
+    c + '/accounts/{accountId}/providers/factory/' + name,
+    '读取指定 Factory Droid API 账号的 ' + name,
+  );
+route(
+  'post',
+  c + '/accounts/{accountId}/providers/factory/credentials',
+  '保存 Factory 官方 API Key；发送任务时由官方 Droid 验证授权；空字符串移除密钥；活动任务期间拒绝修改，不回显密钥',
   {
     request: obj({ apiKey: { type: 'string', maxLength: 4096, writeOnly: true } }, ['apiKey']),
   },

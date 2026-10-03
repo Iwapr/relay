@@ -1,3 +1,6 @@
+import { RunUsageSchema } from '../../../packages/contracts/src/index.ts';
+import { FactoryAdapter, FACTORY_VERSION } from '../../../packages/provider-factory/src/index.ts';
+import { writeFactoryKey } from '../../../packages/provider-factory/src/credentials.ts';
 import { DeepSeekAdapter, DEEPSEEK_HARNESS_VERSION } from '../../../packages/provider-deepseek/src/index.ts';
 import { writeKey } from '../../../packages/provider-deepseek/src/credentials.ts';
 import {
@@ -139,42 +142,49 @@ export class Manager {
     readonly identity: AgentIdentity,
     readonly config: AgentConfig,
     private factory: ProviderFactory = (cwd) =>
-      config.provider === 'deepseek'
-        ? new DeepSeekAdapter({
+      config.provider === 'factory'
+        ? new FactoryAdapter({
             cwd,
-            home: config.deepseekHome ?? join(config.stateDir, 'deepseek'),
-            executable: config.deepseekExecutable,
+            home: config.factoryHome ?? join(config.stateDir, 'factory'),
+            executable: config.factoryExecutable,
             taskUmask: config.taskUmask,
           })
-        : config.provider === 'antigravity'
-          ? new GeminiAdapter({
+        : config.provider === 'deepseek'
+          ? new DeepSeekAdapter({
               cwd,
-              home: config.antigravityHome ?? join(config.stateDir, 'antigravity'),
-              executable: config.antigravityExecutable,
+              home: config.deepseekHome ?? join(config.stateDir, 'deepseek'),
+              executable: config.deepseekExecutable,
               taskUmask: config.taskUmask,
             })
-          : config.provider === 'claude'
-            ? new ClaudeAdapter({
+          : config.provider === 'antigravity'
+            ? new GeminiAdapter({
                 cwd,
-                home: config.claudeHome ?? join(config.stateDir, 'claude'),
-                executable: config.claudeExecutable,
+                home: config.antigravityHome ?? join(config.stateDir, 'antigravity'),
+                executable: config.antigravityExecutable,
                 taskUmask: config.taskUmask,
               })
-            : config.provider === 'kimi'
-              ? new KimiAdapter({
+            : config.provider === 'claude'
+              ? new ClaudeAdapter({
                   cwd,
-                  home: config.kimiHome!,
-                  executable: config.kimiExecutable,
+                  home: config.claudeHome ?? join(config.stateDir, 'claude'),
+                  executable: config.claudeExecutable,
                   taskUmask: config.taskUmask,
                 })
-              : new CodexAdapter({
-                  cwd,
-                  executable: config.codexExecutable,
-                  taskUmask: config.taskUmask,
-                  codexHome: identity.codexHome,
-                  credentialStore: config.codexHome ? 'file' : undefined,
-                  authBroker: this.authBroker,
-                }),
+              : config.provider === 'kimi'
+                ? new KimiAdapter({
+                    cwd,
+                    home: config.kimiHome!,
+                    executable: config.kimiExecutable,
+                    taskUmask: config.taskUmask,
+                  })
+                : new CodexAdapter({
+                    cwd,
+                    executable: config.codexExecutable,
+                    taskUmask: config.taskUmask,
+                    codexHome: identity.codexHome,
+                    credentialStore: config.codexHome ? 'file' : undefined,
+                    authBroker: this.authBroker,
+                  }),
     private readonly observeRun?: (workspace: StoredWorkspace, run: Run) => Promise<void>,
   ) {
     if (config.authHome && (!config.provider || config.provider === 'codex'))
@@ -590,14 +600,16 @@ export class Manager {
         const run: Run = {
           accountLabel: this.config.accountLabel ?? '跟随 Codex',
           accountProfile:
-            (this.config.deepseekHome ??
+            (this.config.factoryHome ??
+            this.config.deepseekHome ??
             this.config.antigravityHome ??
             this.config.claudeHome ??
             this.config.kimiHome ??
             this.config.authHome)
               ? basename(
                   dirname(
-                    (this.config.deepseekHome ??
+                    (this.config.factoryHome ??
+                      this.config.deepseekHome ??
                       this.config.antigravityHome ??
                       this.config.claudeHome ??
                       this.config.kimiHome ??
@@ -662,7 +674,7 @@ export class Manager {
     if (
       !active ||
       active.conversationId !== conversationId ||
-      (['antigravity', 'deepseek'].includes(this.config.provider ?? '') &&
+      (['antigravity', 'deepseek', 'factory'].includes(this.config.provider ?? '') &&
         !this.providers.get(workspace.id)?.adapter.steerRun)
     ) {
       const run = await this.submit(conversationId, input);
@@ -1101,7 +1113,10 @@ export class Manager {
       }
       const adapter = await this.provider(run.workspaceId);
       const account = await adapter.getAccount();
-      if (this.config.provider === 'deepseek') {
+      if (this.config.provider === 'factory') {
+        if (!account.authenticated || account.authMode !== 'factory-api-key')
+          throw new AppError('auth_required', '请先配置 Factory API Key', 401);
+      } else if (this.config.provider === 'deepseek') {
         if (!account.authenticated || account.authMode !== 'deepseek-api-key')
           throw new AppError('auth_required', '请先配置 DeepSeek API Key', 401);
       } else if (this.config.provider === 'antigravity') {
@@ -1120,9 +1135,11 @@ export class Manager {
       if (!model) throw new AppError('unsupported_feature', '所选模型当前不可用');
       if (run.reasoningEffort && !model.reasoningEfforts.includes(run.reasoningEffort))
         throw new AppError('unsupported_feature', '模型不支持所选推理强度');
-      // Kimi may continue through Extra Usage after subscription windows are exhausted.
-      // Let Kimi enforce its entitlements; quota lookup must not delay or block a prompt.
-      const quota = this.config.provider === 'kimi' ? null : await adapter.getQuota();
+      // Kimi and Droid can continue through other billing pools after one window is exhausted.
+      // Their official harnesses enforce entitlements; quota lookup must not delay or block a prompt.
+      const quota = ['kimi', 'factory'].includes(this.config.provider ?? '')
+        ? null
+        : await adapter.getQuota();
       if (
         quota &&
         !quota.stale &&
@@ -1149,20 +1166,22 @@ export class Manager {
         conversationId: conversation.id,
         account,
         version:
-          this.config.provider === 'deepseek'
-            ? DEEPSEEK_HARNESS_VERSION
-            : this.config.provider === 'antigravity'
-              ? ANTIGRAVITY_VERSION
-              : this.config.provider === 'claude'
-                ? CLAUDE_VERSION
-                : this.config.provider === 'kimi'
-                  ? KIMI_VERSION
-                  : SUPPORTED_CODEX_VERSION,
+          this.config.provider === 'factory'
+            ? FACTORY_VERSION
+            : this.config.provider === 'deepseek'
+              ? DEEPSEEK_HARNESS_VERSION
+              : this.config.provider === 'antigravity'
+                ? ANTIGRAVITY_VERSION
+                : this.config.provider === 'claude'
+                  ? CLAUDE_VERSION
+                  : this.config.provider === 'kimi'
+                    ? KIMI_VERSION
+                    : SUPPORTED_CODEX_VERSION,
         createdAt: new Date().toISOString(),
       });
       if (await this.cancelBeforeDispatch(run)) return;
       try {
-        const filesOnly = ['antigravity', 'deepseek'].includes(this.config.provider ?? '');
+        const filesOnly = ['antigravity', 'deepseek', 'factory'].includes(this.config.provider ?? '');
         if (!filesOnly && !adapter.forkSession) throw new Error('此提供方暂不支持文件回滚');
         if (!filesOnly && hadSession && !adapter.readNativeSession)
           throw new Error('提供方不支持读取原生历史');
@@ -1195,7 +1214,10 @@ export class Manager {
         sessionId: session.id,
         text: run.text,
         ...(imageInputs.length ? { images: imageInputs } : {}),
-        reasoningEffort: run.reasoningEffort,
+        reasoningEffort:
+          this.config.provider === 'factory'
+            ? (run.reasoningEffort ?? model.defaultReasoningEffort)
+            : run.reasoningEffort,
       });
       const latest = this.store.require<Run>('run', run.id);
       latest.providerTurnId = ref.turnId;
@@ -1366,6 +1388,15 @@ export class Manager {
     const ids = { workspaceId, conversationId: run?.conversationId, runId: run?.id };
     this.store.transaction(() => {
       if (run) {
+        if (event.type === 'usage.updated') {
+          const parsed = RunUsageSchema.safeParse(event.payload.usage);
+          if (parsed.success) {
+            run.usage = parsed.data;
+            this.store.put('run', run.id, run);
+            this.store.emit('usage.updated', { run }, ids);
+          }
+          return;
+        }
         if (event.type === 'context.updated') {
           const usage = event.payload.tokenUsage as
             | {
@@ -1647,6 +1678,21 @@ export class Manager {
       this.store.list<Run>('run').some((r) => !terminalStates.includes(r.state))
     )
       throw new AppError('run_conflict', message, 409);
+  }
+  async setFactoryKey(apiKey: string) {
+    if (this.config.provider !== 'factory')
+      throw new AppError('unsupported_feature', '当前账号不是 Factory Droid', 404);
+    if (this.settingsUpdating || this.loginPending)
+      throw new AppError('run_conflict', '账号正在处理请求，请稍后重试', 409);
+    this.assertAccountDeletable('账号仍有活动任务，请等待结束后修改密钥');
+    this.settingsUpdating = true;
+    try {
+      await writeFactoryKey(this.config.factoryHome ?? join(this.config.stateDir, 'factory'), apiKey);
+      this.accountReader.invalidate();
+      return { ok: true };
+    } finally {
+      this.settingsUpdating = false;
+    }
   }
   async setDeepSeekKey(apiKey: string) {
     if (this.config.provider !== 'deepseek')

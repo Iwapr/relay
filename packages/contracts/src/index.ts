@@ -52,7 +52,19 @@ export interface Conversation {
   providerSessionId: string | null;
   createdAt: string;
 }
+export const RunUsageSchema = z
+  .object({
+    inputTokens: z.number().finite().nonnegative().optional(),
+    outputTokens: z.number().finite().nonnegative().optional(),
+    cacheReadTokens: z.number().finite().nonnegative().optional(),
+    cacheCreationTokens: z.number().finite().nonnegative().optional(),
+    thinkingTokens: z.number().finite().nonnegative().optional(),
+    factoryCredits: z.number().finite().nonnegative().optional(),
+  })
+  .refine((value) => Object.values(value).some((n) => n !== undefined));
+export type RunUsage = z.infer<typeof RunUsageSchema>;
 export interface Run {
+  usage?: RunUsage;
   accountProfile?: string;
   accountLabel?: string;
   images?: ImageAttachment[];

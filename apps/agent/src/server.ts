@@ -61,6 +61,9 @@ export async function buildAgent(
       identity.codexHome,
       ...(config.kimiHome ? [config.kimiHome] : []),
       join(identity.home, '.kimi-code'),
+      ...(config.factoryHome ? [config.factoryHome] : []),
+      join(config.stateDir, 'factory'),
+      join(homedir(), '.factory'),
       ...(config.deepseekHome ? [config.deepseekHome] : []),
       join(config.stateDir, 'deepseek'),
       ...(config.antigravityHome ? [config.antigravityHome] : []),
@@ -493,15 +496,17 @@ export async function buildAgent(
           {
             id: config.provider ?? 'codex',
             name:
-              config.provider === 'deepseek'
-                ? 'DeepSeek（测试）'
-                : config.provider === 'antigravity'
-                  ? 'Gemini（测试）'
-                  : config.provider === 'claude'
-                    ? 'Claude'
-                    : config.provider === 'kimi'
-                      ? 'Kimi Code'
-                      : 'Codex',
+              config.provider === 'factory'
+                ? 'Droid（测试）'
+                : config.provider === 'deepseek'
+                  ? 'DeepSeek（测试）'
+                  : config.provider === 'antigravity'
+                    ? 'Gemini（测试）'
+                    : config.provider === 'claude'
+                      ? 'Claude'
+                      : config.provider === 'kimi'
+                        ? 'Kimi Code'
+                        : 'Codex',
             capabilities: p.capabilities(),
           },
         ],
@@ -519,7 +524,7 @@ export async function buildAgent(
   });
   app.get(providerPath + '/models', async () => ({ models: await manager.accountReader.read('models') }));
   app.get(providerPath + '/quota', async () => ({ quota: await manager.accountReader.read('quota') }));
-  if (config.provider === 'deepseek') {
+  if (config.provider === 'deepseek' || config.provider === 'factory') {
     app.post(providerPath + '/credentials', async (req) => {
       const { apiKey } = z
         .object({
@@ -531,7 +536,7 @@ export async function buildAgent(
         })
         .strict()
         .parse(req.body);
-      return manager.setDeepSeekKey(apiKey);
+      return config.provider === 'factory' ? manager.setFactoryKey(apiKey) : manager.setDeepSeekKey(apiKey);
     });
   }
   if (config.provider === 'antigravity') {

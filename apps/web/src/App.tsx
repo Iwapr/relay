@@ -1,4 +1,6 @@
+import { FactoryUsage } from './FactoryUsage';
 import { DeepSeekBalance } from './DeepSeekBalance';
+import { FactoryKeyPanel } from './FactoryKeyPanel';
 import { DeepSeekKeyPanel } from './DeepSeekKeyPanel';
 import { GeminiSettingsPanel } from './GeminiSettingsPanel';
 import { RemoteManagement } from './RemoteManagement';
@@ -152,7 +154,7 @@ export default function App() {
     [accountError, setAccountError] = useState(''),
     [newAccountLabel, setNewAccountLabel] = useState(''),
     [newAccountProvider, setNewAccountProvider] = useState<
-      'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek'
+      'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek' | 'factory'
     >('codex'),
     [accountBusy, setAccountBusy] = useState(false),
     [account, setAccount] = useState<AccountState | null>(null),
@@ -177,34 +179,38 @@ export default function App() {
     accountOpenRef = useRef(accountOpen);
   const selectedProvider = connections.find((c) => c.id === connection)?.provider ?? 'codex';
   const providerName =
-    selectedProvider === 'deepseek'
-      ? 'DeepSeek（测试）'
-      : selectedProvider === 'antigravity'
-        ? 'Gemini（测试）'
-        : selectedProvider === 'claude'
-          ? 'Claude'
-          : selectedProvider === 'kimi'
-            ? 'Kimi Code'
-            : 'ChatGPT';
+    selectedProvider === 'factory'
+      ? 'Droid（测试）'
+      : selectedProvider === 'deepseek'
+        ? 'DeepSeek（测试）'
+        : selectedProvider === 'antigravity'
+          ? 'Gemini（测试）'
+          : selectedProvider === 'claude'
+            ? 'Claude'
+            : selectedProvider === 'kimi'
+              ? 'Kimi Code'
+              : 'ChatGPT';
   const providerAuthenticated =
     account?.authenticated &&
     account.authMode ===
-      (selectedProvider === 'deepseek'
-        ? 'deepseek-api-key'
-        : selectedProvider === 'antigravity'
-          ? 'google-antigravity'
-          : selectedProvider === 'claude'
-            ? 'claude-code'
-            : selectedProvider === 'kimi'
-              ? 'kimi-code'
-              : 'chatgpt');
+      (selectedProvider === 'factory'
+        ? 'factory-api-key'
+        : selectedProvider === 'deepseek'
+          ? 'deepseek-api-key'
+          : selectedProvider === 'antigravity'
+            ? 'google-antigravity'
+            : selectedProvider === 'claude'
+              ? 'claude-code'
+              : selectedProvider === 'kimi'
+                ? 'kimi-code'
+                : 'chatgpt');
   const accountReady = online && providerAuthenticated;
   const accountStatus = !online
     ? '连接不可用'
     : !account
       ? '账号状态未确认'
       : providerAuthenticated
-        ? providerName + (selectedProvider === 'deepseek' ? ' 已配置' : ' 已登录')
+        ? providerName + (['deepseek', 'factory'].includes(selectedProvider) ? ' 已配置' : ' 已登录')
         : '账号未登录';
   const openAccountManagement = () => {
     setAccountTab('ai');
@@ -292,7 +298,7 @@ export default function App() {
                 accounts: Array<{
                   id: string;
                   label: string;
-                  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek';
+                  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek' | 'factory';
                   account?: AccountState;
                 }>;
               }>(base(root.id) + '/providers/codex/accounts');
@@ -404,15 +410,17 @@ export default function App() {
             if (
               a.value.authenticated &&
               a.value.authMode ===
-                (selectedProvider === 'deepseek'
-                  ? 'deepseek-api-key'
-                  : selectedProvider === 'antigravity'
-                    ? 'google-antigravity'
-                    : selectedProvider === 'claude'
-                      ? 'claude-code'
-                      : selectedProvider === 'kimi'
-                        ? 'kimi-code'
-                        : 'chatgpt')
+                (selectedProvider === 'factory'
+                  ? 'factory-api-key'
+                  : selectedProvider === 'deepseek'
+                    ? 'deepseek-api-key'
+                    : selectedProvider === 'antigravity'
+                      ? 'google-antigravity'
+                      : selectedProvider === 'claude'
+                        ? 'claude-code'
+                        : selectedProvider === 'kimi'
+                          ? 'kimi-code'
+                          : 'chatgpt')
             )
               setLoginChallenge((current: any) => (current?.connectionId === connection ? null : current));
           }
@@ -566,6 +574,11 @@ export default function App() {
   }, [connection, user, refresh, selectedProvider, refreshSnapshot]);
   const workspace = snapshot?.workspaces.find((w) => w.id === workspaceId);
   useEffect(() => {
+    const root = user ? workspace?.canonicalRoot : undefined;
+    const name = root?.split('/').filter(Boolean).pop() || root;
+    document.title = name ? `${name} · Relay` : 'Relay';
+  }, [user, workspace?.canonicalRoot]);
+  useEffect(() => {
     if (!connection || !workspace?.id) return;
     const key = connection + ':project-visits';
     save(key, { ...saved<Record<string, number>>(key, {}), [workspace.id]: Date.now() });
@@ -691,7 +704,7 @@ export default function App() {
         account: {
           id: string;
           label: string;
-          provider: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek';
+          provider: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek' | 'factory';
         };
       }>(base(rootId) + '/providers/codex/accounts', {
         label: newAccountLabel,
@@ -915,15 +928,17 @@ export default function App() {
               </button>
               <div className="connection-summary">
                 <span className={'status-dot ' + (accountReady ? '' : 'unknown')} aria-hidden="true" />
-                {selectedProvider === 'deepseek'
-                  ? 'DeepSeek（测试）'
-                  : selectedProvider === 'antigravity'
-                    ? 'Gemini（测试）'
-                    : selectedProvider === 'claude'
-                      ? 'Claude'
-                      : selectedProvider === 'kimi'
-                        ? 'Kimi Code'
-                        : 'Codex'}{' '}
+                {selectedProvider === 'factory'
+                  ? 'Droid（测试）'
+                  : selectedProvider === 'deepseek'
+                    ? 'DeepSeek（测试）'
+                    : selectedProvider === 'antigravity'
+                      ? 'Gemini（测试）'
+                      : selectedProvider === 'claude'
+                        ? 'Claude'
+                        : selectedProvider === 'kimi'
+                          ? 'Kimi Code'
+                          : 'Codex'}{' '}
                 · {accountStatus}
               </div>
             </div>
@@ -1225,28 +1240,32 @@ export default function App() {
                         onClick={() => switchAccount(c.id)}
                       >
                         <span className={'account-provider-icon ' + (c.provider ?? 'codex')}>
-                          {c.provider === 'deepseek'
-                            ? 'D'
-                            : c.provider === 'antigravity'
-                              ? 'G'
-                              : c.provider === 'claude'
-                                ? 'C'
-                                : c.provider === 'kimi'
-                                  ? 'K'
-                                  : '✳'}
+                          {c.provider === 'factory'
+                            ? 'F'
+                            : c.provider === 'deepseek'
+                              ? 'D'
+                              : c.provider === 'antigravity'
+                                ? 'G'
+                                : c.provider === 'claude'
+                                  ? 'C'
+                                  : c.provider === 'kimi'
+                                    ? 'K'
+                                    : '✳'}
                         </span>
                         <span className="account-profile-text">
                           <strong>{c.accountLabel ?? '跟随 Codex'}</strong>
                           <small>
-                            {c.provider === 'deepseek'
-                              ? 'DeepSeek（测试）'
-                              : c.provider === 'antigravity'
-                                ? 'Gemini（测试）'
-                                : c.provider === 'claude'
-                                  ? 'Claude'
-                                  : c.provider === 'kimi'
-                                    ? 'Kimi Code'
-                                    : 'ChatGPT'}
+                            {c.provider === 'factory'
+                              ? 'Droid（测试）'
+                              : c.provider === 'deepseek'
+                                ? 'DeepSeek（测试）'
+                                : c.provider === 'antigravity'
+                                  ? 'Gemini（测试）'
+                                  : c.provider === 'claude'
+                                    ? 'Claude'
+                                    : c.provider === 'kimi'
+                                      ? 'Kimi Code'
+                                      : 'ChatGPT'}
                             {c.accountIdentifier ? ' · ' + c.accountIdentifier : ''}
                           </small>
                         </span>
@@ -1268,7 +1287,8 @@ export default function App() {
                         value={newAccountProvider}
                         onChange={(e) =>
                           setNewAccountProvider(
-                            e.target.value as 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek',
+                            e.target.value as
+                              'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek' | 'factory',
                           )
                         }
                       >
@@ -1276,6 +1296,7 @@ export default function App() {
                         <option value="kimi">Kimi Code</option>
                         <option value="claude">Claude</option>
                         <option value="antigravity">Gemini（测试）</option>
+                        <option value="factory">Droid（测试）</option>
                         <option value="deepseek">DeepSeek（测试）</option>
                       </select>
                       <input
@@ -1291,7 +1312,7 @@ export default function App() {
                     </form>
                     <p className="account-help">
                       ChatGPT、Kimi Code 与 Claude 各可添加 8 个独立账号。Gemini（测试）也可添加 8 个独立
-                      Google 账号；DeepSeek（测试）可添加 8 个独立 API Key 配置。
+                      Google 账号；DeepSeek（测试）和 Droid（测试）各可添加 8 个独立 API Key 配置。
                     </p>
                   </details>
                 </aside>
@@ -1303,7 +1324,7 @@ export default function App() {
                         <h3>{currentConnection?.accountLabel ?? '跟随 Codex'}</h3>
                       </div>
                       <span className={'account-auth-badge' + (providerAuthenticated ? ' ready' : '')}>
-                        {selectedProvider === 'deepseek'
+                        {['deepseek', 'factory'].includes(selectedProvider)
                           ? providerAuthenticated
                             ? '已配置'
                             : '待配置'
@@ -1314,13 +1335,15 @@ export default function App() {
                     </div>
                     {accountPicker('当前 AI 账号')}
                     <p className="account-help">
-                      {selectedProvider === 'deepseek'
-                        ? '使用 DeepSeek 官方 Harness 和官方 API；按量计费。密钥、设置与会话按账号隔离。仅支持完全访问，无沙箱、无需逐次审批。'
-                        : selectedProvider === 'antigravity'
-                          ? 'Gemini（测试）使用官方 Antigravity CLI。各账号独立登录和保存会话，模型与额度按实际返回显示；暂不显示邮箱和套餐名称。'
-                          : selectedProvider !== 'codex'
-                            ? '授权与会话按账号独立保存。切换账号后，已提交任务仍由原账号执行。'
-                            : 'ChatGPT 账号共享 Codex 历史。“跟随 Codex”使用远端当前登录；其他账号独立授权。'}
+                      {selectedProvider === 'factory'
+                        ? '使用 Factory 官方 Droid Harness 和 Factory 提供的模型；使用量计入 Factory 账号。密钥与会话按账号隔离。自动批准仍受 Factory 策略限制。'
+                        : selectedProvider === 'deepseek'
+                          ? '使用 DeepSeek 官方 Harness 和官方 API；按量计费。密钥、设置与会话按账号隔离。仅支持完全访问，无沙箱、无需逐次审批。'
+                          : selectedProvider === 'antigravity'
+                            ? 'Gemini（测试）使用官方 Antigravity CLI。各账号独立登录和保存会话，模型与额度按实际返回显示；暂不显示邮箱和套餐名称。'
+                            : selectedProvider !== 'codex'
+                              ? '授权与会话按账号独立保存。切换账号后，已提交任务仍由原账号执行。'
+                              : 'ChatGPT 账号共享 Codex 历史。“跟随 Codex”使用远端当前登录；其他账号独立授权。'}
                     </p>
                     <dl>
                       <dt>认证方式</dt>
@@ -1330,7 +1353,7 @@ export default function App() {
                       <dt>订阅</dt>
                       <dd>{account?.planType ?? '暂无数据'}</dd>
                     </dl>
-                    {selectedProvider !== 'deepseek' &&
+                    {!['deepseek', 'factory'].includes(selectedProvider) &&
                       !providerAuthenticated &&
                       loginChallenge?.connectionId !== connection && (
                         <button
@@ -1424,6 +1447,15 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                  {selectedProvider === 'factory' && (
+                    <FactoryKeyPanel
+                      key={connection}
+                      connection={connection}
+                      online={online}
+                      configured={!!providerAuthenticated}
+                      onSaved={() => setRefresh((n) => n + 1)}
+                    />
+                  )}
                   {selectedProvider === 'deepseek' && (
                     <DeepSeekKeyPanel
                       key={connection}
@@ -1475,6 +1507,14 @@ export default function App() {
                     ) : (
                       <p className="muted">
                         {quota?.unavailableReason ?? '暂无额度数据，无法推算剩余次数。'}
+                        {selectedProvider === 'factory' && (
+                          <>
+                            {' '}
+                            <a href="https://app.factory.ai/settings/usage" target="_blank" rel="noreferrer">
+                              打开 Factory 控制台
+                            </a>
+                          </>
+                        )}
                       </p>
                     )}
                     {quota && (
@@ -1500,7 +1540,17 @@ export default function App() {
                         </small>
                       </div>
                     )}
-                    {selectedProvider !== 'deepseek' && quota?.credits != null && (
+                    {selectedProvider === 'factory' && (
+                      <FactoryUsage
+                        credits={quota?.credits}
+                        runs={(snapshot?.runs ?? []).filter(
+                          (r) =>
+                            r.accountProfile ===
+                            (connection.includes('~') ? connection.split('~').at(-1) : 'default'),
+                        )}
+                      />
+                    )}
+                    {!['deepseek', 'factory'].includes(selectedProvider) && quota?.credits != null && (
                       <details>
                         <summary>Credits 信息</summary>
                         <pre>{JSON.stringify(quota.credits, null, 2)}</pre>

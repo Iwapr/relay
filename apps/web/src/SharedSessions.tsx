@@ -28,7 +28,7 @@ export function SharedSessions({
   onRenamed,
   onClose,
 }: {
-  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek';
+  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek' | 'factory';
   connection: string;
   workspaceId?: string;
   onSelect: (conversation: Conversation, workspace: Workspace) => void;
@@ -36,15 +36,17 @@ export function SharedSessions({
   onRenamed: (conversation: Conversation) => void;
 }) {
   const title =
-    provider === 'deepseek'
-      ? 'DeepSeek（测试）会话'
-      : provider === 'antigravity'
-        ? 'Gemini（测试）会话'
-        : provider === 'claude'
-          ? 'Claude 会话'
-          : provider === 'kimi'
-            ? 'Kimi 会话'
-            : 'Codex 会话';
+    provider === 'factory'
+      ? 'Droid（测试）会话'
+      : provider === 'deepseek'
+        ? 'DeepSeek（测试）会话'
+        : provider === 'antigravity'
+          ? 'Gemini（测试）会话'
+          : provider === 'claude'
+            ? 'Claude 会话'
+            : provider === 'kimi'
+              ? 'Kimi 会话'
+              : 'Codex 会话';
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [sessions, setSessions] = useState<NativeSessionSummary[]>([]),
     [cursor, setCursor] = useState<string | null>(null),
@@ -342,7 +344,7 @@ export function NativeTurn({
   replyKey = 'native',
 }: {
   turn: NativeSessionTurn;
-  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek';
+  provider?: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek' | 'factory';
   connection: string;
   workspaceId?: string;
   root?: string;

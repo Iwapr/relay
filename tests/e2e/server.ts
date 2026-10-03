@@ -1,3 +1,4 @@
+import { factoryFixtureExecutable } from '../helpers/factory-process.ts';
 import { deepseekExecutable, deepseekApiResponse } from '../helpers/deepseek-process.ts';
 import { geminiExecutable } from '../helpers/gemini-process.ts';
 /** Isolated browser fixture. Production entry points never import this provider. */
@@ -309,11 +310,14 @@ const agents: (Awaited<ReturnType<typeof buildAgent>> & {
   tokenFile: string;
   socketPath: string;
 })[] = [];
+const factoryExecutable = await factoryFixtureExecutable(directory);
 const deepseekFixtureExecutable = await deepseekExecutable(directory);
 const originalFetch = globalThis.fetch;
 globalThis.fetch = (async (input: any, init?: RequestInit) => {
   if (typeof input === 'string' && input.startsWith('https://api.deepseek.com/'))
     return deepseekApiResponse(input, new Headers(init?.headers).get('authorization') ?? '');
+  if (typeof input === 'string' && input.startsWith('https://api.factory.ai/'))
+    return new Response('Forbidden', { status: 403 });
   return originalFetch(input, init);
 }) as typeof fetch;
 const authorizedHomes = new Set<string>();
@@ -332,6 +336,7 @@ for (const id of ['a', 'b']) {
       kimiExecutable: kimiFixtureExecutable,
       claudeExecutable: claudeFixtureExecutable,
       antigravityExecutable: geminiFixtureExecutable,
+      factoryExecutable,
       deepseekExecutable: deepseekFixtureExecutable,
       codexHome: join(directory, 'shared-codex-' + id),
       maxProviders: 4,

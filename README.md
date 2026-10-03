@@ -2,7 +2,7 @@
 
 **把自己的电脑变成工作台，在电脑和手机上继续工作。**
 
-浏览器中使用 Codex、Claude、Kimi、Gemini（测试）和 DeepSeek（测试），管理对话、文件与终端。文件和工作台数据保存在你的服务器上；模型请求仍由对应提供方处理。本项目代码由AI生成。
+浏览器中使用 Codex、Claude、Kimi、Gemini（测试）、DeepSeek（测试）和 Droid（测试），管理对话、文件与终端。文件和工作台数据保存在你的服务器上；模型请求仍由对应提供方处理。本项目代码由AI生成。
 
 
 ## 能做什么
@@ -69,6 +69,7 @@ cd relay
 
 ## 文档
 
+- [Droid（测试）：Factory 官方 Harness 与模型](docs/factory-test.md)
 - [DeepSeek（测试）：官方 Harness + 官方 API，固定完全访问](docs/deepseek-test.md)
 
 [快速安装](docs/quickstart.md) · [完整使用手册](docs/manual.md) · [部署与备份](docs/deployment.md) · [共享项目](docs/shared-projects.md) · [新增用户](docs/add-relay-user.md) · [故障排查](docs/troubleshooting.md)

@@ -10,7 +10,7 @@ export interface SessionHistoryEntry extends NativeSessionSummary {
 export function sessionHistory(
   native: NativeSessionSummary[],
   snapshot: Snapshot | null,
-  provider: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek',
+  provider: 'codex' | 'kimi' | 'claude' | 'antigravity' | 'deepseek' | 'factory',
   workspaceId?: string,
 ): SessionHistoryEntry[] {
   const rows = new Map<string, SessionHistoryEntry>(native.map((session) => [session.id, session]));
