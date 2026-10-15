@@ -98,12 +98,21 @@ sudo loginctl enable-linger "$(id -un)"
 git pull --ff-only
 export PATH="$PWD/.runtime/bootstrap/node/bin:$PATH"
 node --version  # 应为 v24.x；使用系统 Node 的用户需保留 Node 24
-npm ci
-npm run build
+./relay update
 ./relay start
 ```
 
-前台模式先在运行终端按 Ctrl+C。不要删除 `.runtime`，也不需要重新初始化账号。`npm ci` 或构建失败时保持服务停止，修复后再启动。协议版本变化时按发布说明升级对应 CLI。
+前台模式先在运行终端按 Ctrl+C。不要删除 `.runtime`，也不需要重新初始化账号。
+
+`./relay update` 会在临时目录安装 Codex、Claude Code、Kimi Code、Factory Droid（含 SDK）和 DeepSeek Harness 的官方 npm `latest` 版本，验证客户端、Codex 协议、构建及适配器测试，通过后才替换依赖并更新 Codex 路径。下载、验证或构建失败会保留当前安装。锁文件记录本次解析的版本，以便发布复现；下次更新仍查询 `latest`，无需修改源码里的版本号。
+
+每次更新的完整命令输出保存在 `.runtime/provider-update-时间戳.log`，终端会显示具体路径。只有出现“更新完成”才表示完整流程成功；测试失败后重新启动服务仍会使用旧版客户端。
+
+Antigravity 使用官方 `agy update` 单独更新，检查配置中的 `antigravityExecutable`、项目的 `.runtime/antigravity/agy` 和用户的 `~/.local/bin/agy`；其失败不会撤销已验证的 npm 客户端更新。首次安装使用 `npm run install:gemini`。其他客户端若配置了自定义可执行路径，需移除该覆盖项才能使用统一更新的版本。
+
+可在服务运行时执行 `./relay update --check`，仅下载并验证 npm 客户端，不替换安装、不更新 Antigravity。此命令不会执行模型推理或读取登录凭据；它不能保证每个账号已获得新模型权限。
+
+多用户共享部署可先运行 `./relay update --check`。待任务结束，停止源码目录配置所连接的实例，再在源码目录运行 `./relay update`，完成后执行 `sudo systemctl restart relay@用户名`（全部实例用 `sudo systemctl restart relay`）。新发布会携带本次更新的客户端，旧发布及其依赖快照保留。更新源码不自动重启服务。
 
 ## 手动部署与完整功能
 

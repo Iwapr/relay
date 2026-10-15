@@ -406,3 +406,32 @@ test('Antigravity test profile is distinct from retired Gemini and limited to ei
     await f.close();
   }
 });
+
+test('account proxy forwards large chat text unchanged for runs and replies', async () => {
+  const f = await fixture();
+  try {
+    const { account } = await f.json('/providers/codex/accounts', { label: 'Large text' });
+    const prefix = '/accounts/' + account.id;
+    const { workspace } = await f.json(prefix + '/workspaces/open', { path: f.project });
+    const { conversation } = await f.json(prefix + '/workspaces/' + workspace.id + '/conversations', {
+      title: 'Large text',
+    });
+    const text = '中文 JSONP \\u7ecd'.repeat(100000);
+    assert.ok(Buffer.byteLength(text) > 1024 * 1024);
+    for (const [index, action] of ['runs', 'reply'].entries()) {
+      await f.json(prefix + '/conversations/' + conversation.id + '/' + action, {
+        clientRequestId: randomUUID(),
+        text,
+        model: 'fixture-model',
+        permissionMode: 'read-only',
+      });
+      const selected = await until(
+        () => f.providers.find((p) => p.authHome && p.provider.starts.length === index + 1)?.provider,
+      );
+      assert.equal(selected.starts[index].text, text);
+      selected.complete();
+    }
+  } finally {
+    await f.close();
+  }
+});

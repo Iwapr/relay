@@ -136,7 +136,9 @@ export class GeminiAdapter implements AIProviderAdapter {
           ),
         ),
       );
-      if (!results.some(Boolean)) throw unavailable(message);
+      // This is an actionable setup error, not an unexpected server failure.
+      // Agent hides 5xx messages, which would otherwise erase this diagnosis.
+      if (!results.some(Boolean)) throw new AppError('provider_setup_required', message, 422);
     }
   }
   private launch(args: string[], cwd = this.options.cwd, login = false) {
@@ -244,7 +246,7 @@ export class GeminiAdapter implements AIProviderAdapter {
           }
           const models: ModelInfo[] = [];
           for (const line of output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').split('\n')) {
-            const match = /^\s*(gemini-[a-z0-9.-]+)\s+(.+?)\s*$/i.exec(line);
+            const match = /^\s*([a-z0-9]+(?:[-._][a-z0-9]+)+)\s+(.+?)\s*$/i.exec(line);
             if (match && !models.some((m) => m.id === match[1]))
               models.push({
                 id: match[1],
@@ -257,7 +259,7 @@ export class GeminiAdapter implements AIProviderAdapter {
               });
           }
           if (!models.length)
-            reject(unavailable('未能读取可用 Gemini 模型，请检查账号权益或 Antigravity 版本'));
+            reject(unavailable('未能读取可用 Antigravity 模型，请检查账号权益或 Antigravity 版本'));
           else {
             for (const model of models) {
               const family = model.id.replace(/-(low|medium|high|max)$/, '');
@@ -336,7 +338,7 @@ export class GeminiAdapter implements AIProviderAdapter {
       const windows: QuotaState['windows'] = [];
       for (const line of (await this.report('/usage')).split('\n')) {
         const parts = line.trim().split('\t');
-        if (parts.length !== 4 || !/^Gemini Models$/i.test(parts[0])) continue;
+        if (parts.length !== 4 || !/^(Gemini Models|Claude and GPT models)$/i.test(parts[0])) continue;
         const match = /^(\d+(?:\.\d+)?)%$/.exec(parts[2]);
         const remaining = match ? Number(match[1]) : NaN;
         const reset = Date.parse(parts[3]);
@@ -345,12 +347,13 @@ export class GeminiAdapter implements AIProviderAdapter {
         const weekly = /Weekly/i.test(parts[1]),
           hourly = /Five Hour/i.test(parts[1]);
         if (!weekly && !hourly) continue;
+        const scope = /^Gemini/i.test(parts[0]) ? 'Gemini' : 'Claude / GPT';
         windows.push({
-          name: weekly ? 'Gemini 每周额度' : 'Gemini 五小时额度',
+          name: weekly ? `${scope} 每周额度` : `${scope} 五小时额度`,
           usedPercent: 100 - remaining,
           windowDurationMins: weekly ? 10080 : 300,
           resetsAt: reset / 1000,
-          scope: 'Gemini',
+          scope,
         });
       }
       if (!windows.length) throw unavailable('Google 未返回可识别的额度数据');
@@ -425,8 +428,13 @@ export class GeminiAdapter implements AIProviderAdapter {
       throw new AppError('invalid_request', 'Gemini 会话尚未打开', 400);
     if (input.images?.length)
       throw new AppError('unsupported_feature', 'Gemini（测试）暂不支持图片输入', 400);
-    if (!/^gemini-[a-z0-9.-]+$/i.test(input.model))
-      throw new AppError('invalid_request', 'Gemini 模型标识无效', 400);
+    const models = await this.listModels();
+    if (!models.some((model) => model.id === input.model))
+      throw new AppError(
+        'invalid_request',
+        '此模型不在当前 Antigravity 账号的可用列表中，请刷新模型列表',
+        400,
+      );
     await this.prepare();
     let effectiveModel = input.model;
     const args = [
@@ -441,9 +449,8 @@ export class GeminiAdapter implements AIProviderAdapter {
       input.permissionMode === 'read-only' ? 'plan' : 'accept-edits',
     ];
     if (input.reasoningEffort) {
-      const models = await this.listModels();
       if (!models.find((m) => m.id === input.model)?.reasoningEfforts.includes(input.reasoningEffort))
-        throw new AppError('unsupported_feature', '此 Gemini 模型不支持所选推理强度', 400);
+        throw new AppError('unsupported_feature', '此 Antigravity 模型不支持所选推理强度', 400);
       effectiveModel = input.model.replace(/-(low|medium|high|max)$/, '') + '-' + input.reasoningEffort;
       args[args.indexOf('--model') + 1] = effectiveModel;
       args.push('--effort', input.reasoningEffort);

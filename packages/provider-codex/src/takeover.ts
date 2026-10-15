@@ -14,9 +14,15 @@ export async function nativeWriter(
   fingerprint?: string,
 ): Promise<WriterOwner | { stopped: true }> {
   const output = await new Promise<string>((resolve, reject) => {
-    const child = spawn('python3', ['-I', '-S', fileURLToPath(new URL('./takeover.py', import.meta.url))], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    // This Linux /proc helper requires pidfd support. Conda/venv interpreters on
+    // PATH may omit os.pidfd_open even when their Python version is newer.
+    const child = spawn(
+      '/usr/bin/python3',
+      ['-I', '-S', fileURLToPath(new URL('./takeover.py', import.meta.url))],
+      {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    );
     let data = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');

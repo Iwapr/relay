@@ -160,7 +160,7 @@ export const imageUploadInput = z
 export const runInput = z
   .object({
     clientRequestId: requestId,
-    text: z.string().trim().max(100000),
+    text: z.string().trim(),
     imageIds: z.array(requestId).max(MAX_IMAGES).optional(),
     model: z.string().min(1).max(200),
     reasoningEffort: z.string().max(30).nullable().optional(),

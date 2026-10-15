@@ -78,7 +78,8 @@ export async function buildGateway(input: GatewayConfig, remote?: RemoteManager)
       secure,
       sameSite: 'strict' as const,
       path: '/',
-      maxAge: config.sessionTtlSeconds,
+      // Browsers cap persistent cookies at 400 days; renew them during use.
+      maxAge: config.sessionTtlSeconds || 400 * 24 * 60 * 60,
     },
   });
   const directAccess = accessPolicy(config.publicOrigin, config.secureCookies);
@@ -123,6 +124,8 @@ export async function buildGateway(input: GatewayConfig, remote?: RemoteManager)
     const session = auth.getSession(request.cookies[access.cookieName]);
     if (!session) throw new AppError('auth_required', 'Please sign in to the workbench.', 401);
     sessions.set(request, session);
+    if (config.sessionTtlSeconds === 0)
+      reply.setCookie(access.cookieName, request.cookies[access.cookieName]!, access.cookieOptions);
     if (mutation && request.headers['x-csrf-token'] !== session.csrfToken)
       throw new AppError('permission_denied', 'The CSRF token is missing or invalid.', 403);
   });
@@ -306,104 +309,124 @@ export async function buildGateway(input: GatewayConfig, remote?: RemoteManager)
     const { identity } = await verified(owned(request, request.params.c));
     return { status: 'online', identity };
   });
-  app.route<{ Params: { c: string; '*': string } }>({
-    method: ['GET', 'POST'],
-    url: '/api/connections/:c/*',
-    bodyLimit: IMAGE_UPLOAD_BODY_LIMIT,
-    handler: async (request, reply) => {
-      const profile = owned(request, request.params.c);
-      // Fastify decodes path parameters. Requiring the original canonical path avoids double-decoding and encoded separators.
-      const suffix = '/' + request.params['*'];
-      const canonical = `/api/connections/${profile.id}${suffix}`;
-      if (request.url.split('?')[0] !== canonical || !isAllowedAgentRoute(request.method, suffix))
-        throw new AppError('unsupported_feature', 'This Agent route is not available.', 404);
-      const upstream = await verified(profile);
-      if (suffix === '/identity') return upstream.identity;
-      const query = request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '';
-      const headers: Record<string, string> = {
-        authorization: `Bearer ${upstream.token}`,
-        accept: typeof request.headers.accept === 'string' ? request.headers.accept : 'application/json',
-      };
-      for (const name of ['range', 'if-range', 'if-none-match', 'last-event-id']) {
-        const value = request.headers[name];
-        if (typeof value === 'string') headers[name] = value;
-      }
-      const body = request.body === undefined ? undefined : JSON.stringify(request.body);
-      if (body && !/^\/workspaces\/[^/]+\/images$/.test(suffix) && Buffer.byteLength(body) > 1048576)
-        throw new AppError('request_too_large', '请求内容过大。', 413);
-      if (body !== undefined) {
-        headers['content-type'] = 'application/json';
-        headers['content-length'] = String(Buffer.byteLength(body));
-      }
-      const controller = new AbortController();
-      const sessionToken = request.cookies[requestAccess(request).cookieName]!;
-      let controllers = active.get(sessionToken);
-      if (!controllers) {
-        controllers = new Set();
-        active.set(sessionToken, controllers);
-      }
-      controllers.add(controller);
-      const timer = setTimeout(
-        () => controller.abort(),
-        Math.max(1, sessions.get(request)!.expiresAt - Date.now()),
-      );
-      timer.unref();
-      const cleanup = () => {
-        clearTimeout(timer);
-        controller.abort();
-        controllers?.delete(controller);
-        if (controllers?.size === 0) active.delete(sessionToken);
-      };
-      reply.raw.once('close', cleanup);
-      try {
-        const response = await upstream.transport.request({
-          method: request.method,
-          path: suffix + query,
-          headers,
-          body,
-          signal: controller.signal,
-        });
-        reply.code(response.statusCode ?? 502);
-        for (const name of [
-          'content-type',
-          'content-length',
-          'content-range',
-          'accept-ranges',
-          'etag',
-          'last-modified',
-          'retry-after',
-          'content-disposition',
-        ]) {
-          const value = response.headers[name];
-          if (value !== undefined) reply.header(name, value);
+  for (const chatPath of [
+    undefined,
+    '/conversations/:conversation/runs',
+    '/conversations/:conversation/reply',
+    '/accounts/:account/conversations/:conversation/runs',
+    '/accounts/:account/conversations/:conversation/reply',
+  ]) {
+    app.route<{ Params: { c: string; '*': string; conversation?: string; account?: string } }>({
+      method: ['GET', 'POST'],
+      url: '/api/connections/:c' + (chatPath ?? '/*'),
+      bodyLimit: chatPath ? Number.MAX_SAFE_INTEGER : IMAGE_UPLOAD_BODY_LIMIT,
+      handler: async (request, reply) => {
+        const profile = owned(request, request.params.c);
+        // Fastify decodes path parameters. Requiring the original canonical path avoids double-decoding and encoded separators.
+        const suffix = chatPath
+          ? chatPath
+              .replace(':conversation', request.params.conversation!)
+              .replace(':account', request.params.account ?? '')
+          : '/' + request.params['*'];
+        const canonical = `/api/connections/${profile.id}${suffix}`;
+        if (request.url.split('?')[0] !== canonical || !isAllowedAgentRoute(request.method, suffix))
+          throw new AppError('unsupported_feature', 'This Agent route is not available.', 404);
+        const upstream = await verified(profile);
+        if (suffix === '/identity') return upstream.identity;
+        const query = request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '';
+        const headers: Record<string, string> = {
+          authorization: `Bearer ${upstream.token}`,
+          accept: typeof request.headers.accept === 'string' ? request.headers.accept : 'application/json',
+        };
+        for (const name of ['range', 'if-range', 'if-none-match', 'last-event-id']) {
+          const value = request.headers[name];
+          if (typeof value === 'string') headers[name] = value;
         }
-        if (suffix.endsWith('/file')) {
-          const mime = String(response.headers['content-type'] ?? '')
-            .split(';')[0]
-            .trim()
-            .toLowerCase();
-          if (
-            [
-              'text/html',
-              'application/xhtml+xml',
-              'image/svg+xml',
-              'text/javascript',
-              'application/javascript',
-            ].includes(mime)
-          ) {
-            reply.header('Content-Type', 'text/plain; charset=utf-8');
-            reply.header('Content-Disposition', 'attachment');
+        const body = request.body === undefined ? undefined : JSON.stringify(request.body);
+        if (
+          body &&
+          !chatPath &&
+          !/^\/workspaces\/[^/]+\/images$/.test(suffix) &&
+          Buffer.byteLength(body) > 1048576
+        )
+          throw new AppError('request_too_large', '请求内容过大。', 413);
+        if (body !== undefined) {
+          headers['content-type'] = 'application/json';
+          headers['content-length'] = String(Buffer.byteLength(body));
+        }
+        const controller = new AbortController();
+        const sessionToken = request.cookies[requestAccess(request).cookieName]!;
+        let controllers = active.get(sessionToken);
+        if (!controllers) {
+          controllers = new Set();
+          active.set(sessionToken, controllers);
+        }
+        controllers.add(controller);
+        const expiresAt = sessions.get(request)!.expiresAt;
+        const timer =
+          expiresAt === 0
+            ? undefined
+            : setTimeout(() => controller.abort(), Math.max(1, expiresAt - Date.now()));
+        timer?.unref();
+        const cleanup = () => {
+          clearTimeout(timer);
+          controller.abort();
+          controllers?.delete(controller);
+          if (controllers?.size === 0) active.delete(sessionToken);
+        };
+        reply.raw.once('close', cleanup);
+        try {
+          const response = await upstream.transport.request({
+            method: request.method,
+            path: suffix + query,
+            headers,
+            body,
+            signal: controller.signal,
+          });
+          reply.code(response.statusCode ?? 502);
+          for (const name of [
+            'content-type',
+            'content-length',
+            'content-range',
+            'accept-ranges',
+            'etag',
+            'last-modified',
+            'retry-after',
+            'content-disposition',
+          ]) {
+            const value = response.headers[name];
+            if (value !== undefined) reply.header(name, value);
           }
+          if (suffix.endsWith('/file')) {
+            const mime = String(response.headers['content-type'] ?? '')
+              .split(';')[0]
+              .trim()
+              .toLowerCase();
+            if (mime === 'image/svg+xml') {
+              reply.header(
+                'Content-Security-Policy',
+                "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+              );
+            }
+            if (
+              ['text/html', 'application/xhtml+xml', 'text/javascript', 'application/javascript'].includes(
+                mime,
+              )
+            ) {
+              reply.header('Content-Type', 'text/plain; charset=utf-8');
+              reply.header('Content-Disposition', 'attachment');
+            }
+          }
+          reply.header('Cache-Control', 'no-store, private').header('X-Accel-Buffering', 'no');
+          return reply.send(response);
+        } catch (error) {
+          cleanup();
+          status.set(profile.id, 'offline');
+          throw error;
         }
-        reply.header('Cache-Control', 'no-store, private').header('X-Accel-Buffering', 'no');
-        return reply.send(response);
-      } catch (error) {
-        cleanup();
-        status.set(profile.id, 'offline');
-        throw error;
-      }
-    },
-  });
+      },
+    });
+  }
   if (config.staticDir) {
     await app.register(fastifyStatic, { root: config.staticDir, cacheControl: false, index: 'index.html' });
   }

@@ -1,5 +1,6 @@
 /** Both components of one relay@user instance, running as that ordinary user. */
 import { chmod, lstat, mkdir, readFile, unlink } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { connect } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -34,7 +35,18 @@ export async function instanceConfigs(descriptor: string, release: string) {
     throw new Error('Run this instance as its configured ordinary Linux user');
   const agent = AgentConfigSchema.parse({
     ...(await privateConfig(instance.agentConfig)),
-    codexExecutable: join(release, 'codex/codex'),
+    // Template services use the release's official clients for every account.
+    // Credential homes remain private and are never overridden here.
+    claudeExecutable: undefined,
+    kimiExecutable: undefined,
+    deepseekExecutable: undefined,
+    factoryExecutable: undefined,
+    ...(existsSync(join(release, 'providers/agy'))
+      ? { antigravityExecutable: join(release, 'providers/agy') }
+      : {}),
+    codexExecutable: existsSync(join(release, 'node_modules/.bin/codex'))
+      ? join(release, 'node_modules/.bin/codex')
+      : join(release, 'codex/codex'),
   });
   const gateway = gatewayConfigSchema.parse({
     ...(await privateConfig(instance.gatewayConfig)),

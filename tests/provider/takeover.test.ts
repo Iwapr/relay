@@ -70,6 +70,30 @@ test('changed affected sessions and forged fingerprint never signal the process'
   }
 });
 
+test('takeover uses system Python even when PATH contains an incompatible environment Python', async () => {
+  const f = await fixture();
+  const previousPath = process.env.PATH;
+  try {
+    await writeFile(
+      join(f.home, 'python3'),
+      '#!/bin/sh\necho incompatible-environment-python >&2\nexit 97\n',
+      {
+        mode: 0o700,
+      },
+    );
+    process.env.PATH = `${f.home}:${previousPath ?? ''}`;
+    const plan = (await nativeWriter(f.home, 'target')) as WriterOwner;
+    assert.deepEqual(plan.sessions, ['second', 'target']);
+    assert.deepEqual(await nativeWriter(f.home, 'target', plan.fingerprint), { stopped: true });
+    await f.exited;
+    assert.ok((await stat(join(f.directory, 'target.lock'))).isFile());
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    await f.close();
+  }
+});
+
 test('non-Codex holders, path traversal, and symlink locks are refused', async () => {
   const f = await fixture(['target'], false);
   try {

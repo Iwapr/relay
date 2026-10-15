@@ -1,3 +1,4 @@
+import { migrateFactoryHistory } from '../../../packages/provider-factory/src/migrate-history.ts';
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises';
@@ -21,7 +22,7 @@ interface AccountProfile {
   account?: AccountState;
 }
 
-/** Each account owns its authorization and task store; native history uses one shared Codex home. The owner session
+/** Each account owns its authorization and task store; native history uses a shared home per provider. The owner session
  * stays at the gateway; account selection is explicit in every request URL. */
 export function registerAccounts(
   app: FastifyInstance,
@@ -35,6 +36,26 @@ export function registerAccounts(
   const transports = new Map<string, AgentTransport>();
   let socketDirectory: Promise<string> | undefined;
   let closing = false;
+  let factoryMigration: Promise<void> | undefined;
+  const factorySessionHome = config.factorySessionHome ?? join(config.stateDir, 'factory-shared');
+  const prepareFactoryHistory = () =>
+    (factoryMigration ??= (async () => {
+      await migrateFactoryHistory(
+        config.factoryHome ?? join(config.stateDir, 'factory'),
+        factorySessionHome,
+        join(config.stateDir, 'agent.sqlite'),
+      );
+      for (const account of store
+        .list<AccountProfile>('codexAccount')
+        .filter((a) => a.provider === 'factory')) {
+        const directory = join(config.stateDir, 'accounts', account.id);
+        await migrateFactoryHistory(
+          join(directory, 'factory'),
+          factorySessionHome,
+          join(directory, 'state', 'agent.sqlite'),
+        );
+      }
+    })());
   const deleting = new Set<string>();
   const mutations = new Map<string, number>();
   const home = (id: string) => join(config.stateDir, 'accounts', id, 'codex');
@@ -62,7 +83,10 @@ export function registerAccounts(
       const deepseek = profile.provider === 'deepseek';
       const factoryProvider = profile.provider === 'factory';
       const factoryHome = join(directory, 'factory');
-      if (factoryProvider) await mkdir(factoryHome, { recursive: true, mode: 0o700 });
+      if (factoryProvider) {
+        await prepareFactoryHistory();
+        await mkdir(factoryHome, { recursive: true, mode: 0o700 });
+      }
       const codex = !kimi && !claude && !antigravity && !deepseek && !factoryProvider;
       const deepseekHome = join(directory, 'deepseek');
       if (deepseek) await mkdir(deepseekHome, { recursive: true, mode: 0o700 });
@@ -86,6 +110,7 @@ export function registerAccounts(
                 : kimi
                   ? 'kimi'
                   : 'codex',
+        factorySessionHome: factoryProvider ? factorySessionHome : undefined,
         factoryHome: factoryProvider ? factoryHome : undefined,
         deepseekHome: deepseek ? deepseekHome : undefined,
         antigravityHome: antigravity ? antigravityHome : undefined,
@@ -184,68 +209,76 @@ export function registerAccounts(
       deleting.delete(id);
     }
   });
-  app.route<{ Params: { id: string; '*': string } }>({
-    method: ['GET', 'POST'],
-    url: '/accounts/:id/*',
-    bodyLimit: IMAGE_UPLOAD_BODY_LIMIT,
-    handler: async (request, reply) => {
-      const { id } = request.params;
-      const suffix = '/' + request.params['*'];
-      const canonical = '/accounts/' + id + suffix;
-      if (request.url.split('?')[0] !== canonical || !isAllowedAgentRoute(request.method, canonical))
-        throw new AppError('unsupported_feature', '此账号接口不可用', 404);
-      if (deleting.has(id)) throw new AppError('run_conflict', '此账号正在删除', 409);
-      const profile = store.require<AccountProfile>('codexAccount', id);
-      if (request.method === 'POST') {
-        mutations.set(id, (mutations.get(id) ?? 0) + 1);
-        let finished = false;
-        const finish = () => {
-          if (finished) return;
-          finished = true;
-          mutations.set(id, Math.max(0, (mutations.get(id) ?? 1) - 1));
-        };
-        reply.raw.once('finish', finish);
-        reply.raw.once('close', finish);
-      }
-      await child(profile);
-      const transport = transports.get(id)!;
-      const query = request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '';
-      const connect = suffix === '/connect';
-      const headers: Record<string, string> = { authorization: `Bearer ${token}` };
-      for (const name of ['accept', 'range', 'if-range', 'if-none-match', 'last-event-id']) {
-        const value = request.headers[name];
-        if (typeof value === 'string') headers[name] = value;
-      }
-      const body = connect || request.body === undefined ? undefined : JSON.stringify(request.body);
-      if (body !== undefined) {
-        headers['content-type'] = 'application/json';
-        headers['content-length'] = String(Buffer.byteLength(body));
-      }
-      const controller = new AbortController();
-      reply.raw.once('close', () => controller.abort());
-      const response = await transport.request({
-        method: connect ? 'GET' : request.method,
-        path: (connect ? '/identity' : suffix) + query,
-        headers,
-        body,
-        signal: controller.signal,
-      });
-      reply.code(response.statusCode ?? 502);
-      for (const name of [
-        'content-type',
-        'content-length',
-        'content-range',
-        'accept-ranges',
-        'etag',
-        'last-modified',
-        'content-disposition',
-      ]) {
-        const value = response.headers[name];
-        if (value !== undefined) reply.header(name, value);
-      }
-      return reply.send(response);
-    },
-  });
+  for (const chatPath of [
+    undefined,
+    '/conversations/:conversation/runs',
+    '/conversations/:conversation/reply',
+  ]) {
+    app.route<{ Params: { id: string; '*': string; conversation?: string } }>({
+      method: ['GET', 'POST'],
+      url: '/accounts/:id' + (chatPath ?? '/*'),
+      bodyLimit: chatPath ? Number.MAX_SAFE_INTEGER : IMAGE_UPLOAD_BODY_LIMIT,
+      handler: async (request, reply) => {
+        const { id } = request.params;
+        const suffix = chatPath
+          ? chatPath.replace(':conversation', request.params.conversation!)
+          : '/' + request.params['*'];
+        const canonical = '/accounts/' + id + suffix;
+        if (request.url.split('?')[0] !== canonical || !isAllowedAgentRoute(request.method, canonical))
+          throw new AppError('unsupported_feature', '此账号接口不可用', 404);
+        if (deleting.has(id)) throw new AppError('run_conflict', '此账号正在删除', 409);
+        const profile = store.require<AccountProfile>('codexAccount', id);
+        if (request.method === 'POST') {
+          mutations.set(id, (mutations.get(id) ?? 0) + 1);
+          let finished = false;
+          const finish = () => {
+            if (finished) return;
+            finished = true;
+            mutations.set(id, Math.max(0, (mutations.get(id) ?? 1) - 1));
+          };
+          reply.raw.once('finish', finish);
+          reply.raw.once('close', finish);
+        }
+        await child(profile);
+        const transport = transports.get(id)!;
+        const query = request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '';
+        const connect = suffix === '/connect';
+        const headers: Record<string, string> = { authorization: `Bearer ${token}` };
+        for (const name of ['accept', 'range', 'if-range', 'if-none-match', 'last-event-id']) {
+          const value = request.headers[name];
+          if (typeof value === 'string') headers[name] = value;
+        }
+        const body = connect || request.body === undefined ? undefined : JSON.stringify(request.body);
+        if (body !== undefined) {
+          headers['content-type'] = 'application/json';
+          headers['content-length'] = String(Buffer.byteLength(body));
+        }
+        const controller = new AbortController();
+        reply.raw.once('close', () => controller.abort());
+        const response = await transport.request({
+          method: connect ? 'GET' : request.method,
+          path: (connect ? '/identity' : suffix) + query,
+          headers,
+          body,
+          signal: controller.signal,
+        });
+        reply.code(response.statusCode ?? 502);
+        for (const name of [
+          'content-type',
+          'content-length',
+          'content-range',
+          'accept-ranges',
+          'etag',
+          'last-modified',
+          'content-disposition',
+        ]) {
+          const value = response.headers[name];
+          if (value !== undefined) reply.header(name, value);
+        }
+        return reply.send(response);
+      },
+    });
+  }
   // SSE streams must be closed before Fastify waits for in-flight proxy requests.
   app.addHook('preClose', async () => {
     closing = true;

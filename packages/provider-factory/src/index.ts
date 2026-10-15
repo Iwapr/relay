@@ -1,7 +1,10 @@
+import { listSessions, sessionSummary, sessionHistory, saveTurn } from './history.ts';
+import type { NativeSessionTurn } from '../../provider-core/src/index.ts';
+import { optionalPackageRuntime } from '../../provider-core/src/runtime.ts';
 import { factoryQuota } from './quota.ts';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,8 +24,9 @@ import type {
 import { readFactoryKey } from './credentials.ts';
 import type { FactoryRequest } from './runtime.ts';
 
-export const FACTORY_VERSION = '0.232.0';
+export const FACTORY_VERSION = optionalPackageRuntime('droid', 'droid')?.version ?? '0.232.0';
 export const factoryExecutable = () =>
+  optionalPackageRuntime('droid', 'droid')?.executable ??
   join(homedir(), '.local/share/relay/factory', FACTORY_VERSION, 'node_modules/.bin/droid');
 type Json = Record<string, any>;
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
@@ -34,13 +38,34 @@ export class FactoryAdapter implements AIProviderAdapter {
   private children = new Set<ChildProcess>();
   private current?: ProviderRunRef;
   private session?: string;
+  private historyTurn?: NativeSessionTurn;
   private closed = false;
   private cancelled = false;
   private execution?: Promise<void>;
   private tasks = new Set<Promise<unknown>>();
   private interactions = new Map<string, { child: ChildProcess; kind: string }>();
   private pendingTools = new Set<string>();
-  constructor(private options: { cwd: string; home: string; executable?: string; taskUmask?: string }) {}
+  constructor(
+    private options: {
+      cwd: string;
+      home: string;
+      sessionHome?: string;
+      executable?: string;
+      taskUmask?: string;
+    },
+  ) {}
+  private get sessionHome() {
+    return this.options.sessionHome ?? this.options.home;
+  }
+  listNativeSessions(cursor?: string, scope: 'workspace' | 'all' = 'workspace') {
+    return listSessions(this.sessionHome, this.options.cwd, cursor, scope);
+  }
+  readNativeSessionMetadata(id: string) {
+    return sessionSummary(this.sessionHome, id);
+  }
+  readNativeSession(id: string, options?: { limit?: number }) {
+    return sessionHistory(this.sessionHome, id, options?.limit);
+  }
   capabilities() {
     return {
       sessions: true,
@@ -61,6 +86,27 @@ export class FactoryAdapter implements AIProviderAdapter {
     };
   }
   private emit(type: string, payload: Json) {
+    const turn = this.historyTurn;
+    if (turn && this.current) {
+      const kind = type.startsWith('tool.') ? 'tool' : 'assistant';
+      if (
+        ['message.delta', 'message.completed', 'tool.started', 'tool.output', 'tool.completed'].includes(type)
+      ) {
+        const id = String(payload.itemId);
+        let item = turn.messages.find((m) => m.id === id && m.kind === kind);
+        if (!item) {
+          item = { id, kind, text: '' };
+          turn.messages.push(item);
+        }
+        if (type === 'message.delta') item.text += payload.delta ?? '';
+        else if (type === 'tool.output') item.text += payload.output ?? '';
+        else item.text = payload.text ?? payload.title ?? item.text;
+      }
+      if (type === 'run.failed') turn.state = 'failed';
+      if (type === 'run.completed') turn.state = payload.state === 'cancelled' ? 'cancelled' : 'completed';
+      if (type !== 'message.delta' && type !== 'tool.output')
+        saveTurn(this.sessionHome, this.current.sessionId, turn);
+    }
     for (const listener of this.listeners)
       listener({ type, generation: this.generation, ...this.current, payload });
   }
@@ -93,7 +139,7 @@ export class FactoryAdapter implements AIProviderAdapter {
 
   private file(id: string) {
     if (!uuid.test(id)) throw new Error('Factory 会话标识无效');
-    return join(this.options.home, 'relay-sessions', id + '.json');
+    return join(this.sessionHome, 'relay-sessions', id + '.json');
   }
   private check(input: CreateSessionInput) {
     if (resolve(input.cwd) !== resolve(this.options.cwd)) throw new Error('Factory 项目目录不匹配');
@@ -101,8 +147,12 @@ export class FactoryAdapter implements AIProviderAdapter {
   async createSession(input: CreateSessionInput) {
     this.check(input);
     const id = randomUUID();
-    await mkdir(join(this.options.home, 'relay-sessions'), { recursive: true, mode: 0o700 });
-    await writeFile(this.file(id), JSON.stringify({ cwd: resolve(input.cwd) }), { mode: 0o600 });
+    await mkdir(join(this.sessionHome, 'relay-sessions'), { recursive: true, mode: 0o700 });
+    await writeFile(
+      this.file(id),
+      JSON.stringify({ cwd: resolve(input.cwd), updatedAt: new Date().toISOString() }),
+      { mode: 0o600 },
+    );
     this.session = id;
     return { id };
   }
@@ -121,6 +171,26 @@ export class FactoryAdapter implements AIProviderAdapter {
     const key = await readFactoryKey(this.options.home);
     if (!key) throw new AppError('auth_required', '请先配置 Factory API Key', 401);
     const ref = (this.current = { sessionId: input.sessionId, turnId: randomUUID() });
+    this.historyTurn = {
+      id: ref.turnId,
+      state: 'running',
+      userText: input.text,
+      messages: [],
+      createdAt: new Date().toISOString(),
+    };
+    saveTurn(this.sessionHome, input.sessionId, this.historyTurn);
+    const record = JSON.parse(await readFile(this.file(input.sessionId), 'utf8'));
+    const metadataTemp = this.file(input.sessionId) + '.' + randomUUID();
+    await writeFile(
+      metadataTemp,
+      JSON.stringify({
+        ...record,
+        title: record.title || input.text.slice(0, 200),
+        updatedAt: this.historyTurn.createdAt,
+      }),
+      { mode: 0o600 },
+    );
+    await rename(metadataTemp, this.file(input.sessionId));
     this.execution = new Promise<void>((r) => setImmediate(r)).then(async () => {
       let result: Json;
       try {
@@ -157,7 +227,7 @@ export class FactoryAdapter implements AIProviderAdapter {
   }
   private async launch(request: FactoryRequest): Promise<Json> {
     if (this.closed || this.cancelled) throw new Error('Factory 进程已关闭');
-    await mkdir(this.options.home, { recursive: true, mode: 0o700 });
+    await mkdir(this.sessionHome, { recursive: true, mode: 0o700 });
     if (this.closed || this.cancelled) throw new Error('Factory 进程已关闭');
     const env = { ...process.env };
     for (const name of Object.keys(env))
@@ -167,11 +237,11 @@ export class FactoryAdapter implements AIProviderAdapter {
       )
         delete env[name];
     Object.assign(env, {
-      HOME: this.options.home,
-      FACTORY_HOME_OVERRIDE: this.options.home,
-      XDG_CONFIG_HOME: join(this.options.home, '.config'),
-      XDG_CACHE_HOME: join(this.options.home, '.cache'),
-      XDG_DATA_HOME: join(this.options.home, '.local/share'),
+      HOME: this.sessionHome,
+      FACTORY_HOME_OVERRIDE: this.sessionHome,
+      XDG_CONFIG_HOME: join(this.sessionHome, '.config'),
+      XDG_CACHE_HOME: join(this.sessionHome, '.cache'),
+      XDG_DATA_HOME: join(this.sessionHome, '.local/share'),
       RELAY_FACTORY_UMASK: this.options.taskUmask ?? '0022',
       PATH: process.execPath.slice(0, process.execPath.lastIndexOf('/')) + delimiter + (env.PATH ?? ''),
     });

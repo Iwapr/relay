@@ -1,11 +1,10 @@
-/** Installs only the official, reviewed CLI release; never alters shell profiles. */
+/** Bootstrap a verified official CLI, then use its official latest-version updater. */
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
-import { ANTIGRAVITY_VERSION } from '../packages/provider-gemini/src/index.ts';
 const run = promisify(execFile);
 if (process.platform !== 'linux' || process.arch !== 'x64')
   throw new Error('此安装脚本目前支持 Linux x64；其他平台请使用官方安装器并配置 antigravityExecutable');
@@ -19,7 +18,10 @@ if (createHash('sha512').update(archive).digest('hex') !== expected)
   throw new Error('Antigravity 校验失败，未安装');
 const staging = await mkdtemp(join(tmpdir(), 'relay-agy-install-'));
 // Service releases exclude .runtime; keep the CLI outside versioned code.
-const destination = join(homedir(), '.local', 'bin');
+const destinationIndex = process.argv.indexOf('--destination');
+if (destinationIndex >= 0 && !process.argv[destinationIndex + 1]) throw new Error('--destination 需要目录');
+const destination =
+  destinationIndex >= 0 ? resolve(process.argv[destinationIndex + 1]!) : join(homedir(), '.local', 'bin');
 try {
   await writeFile(join(staging, 'release.tar.gz'), archive);
   await run('tar', ['-xzf', join(staging, 'release.tar.gz'), '-C', staging, 'antigravity']);
@@ -30,7 +32,8 @@ try {
   await writeFile(target, await readFile(join(staging, 'antigravity')), { mode: 0o755 });
   await chmod(target, 0o755);
   await rename(target, join(destination, 'agy'));
-  console.log(`已安装 Antigravity CLI ${ANTIGRAVITY_VERSION}，SHA-512 校验通过。`);
+  await run(join(destination, 'agy'), ['update'], { timeout: 120_000 });
+  console.log('已安装 Antigravity CLI 并通过官方更新器更新。');
 } finally {
   await rm(staging, { recursive: true, force: true });
 }

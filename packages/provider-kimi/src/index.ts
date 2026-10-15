@@ -1,8 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+import { packageRuntime } from '../../provider-core/src/runtime.ts';
 import { AppError } from '../../contracts/src/index.ts';
 import { readKimiQuota, unavailableQuota } from './quota.ts';
 import type {
@@ -19,8 +19,7 @@ import type {
 
 class KimiRpcError extends AppError {}
 
-const require = createRequire(import.meta.url);
-export const KIMI_VERSION = '2.0.2';
+export const KIMI_VERSION = packageRuntime('@moonshot-ai/kimi-code', 'kimi').version;
 type Json = Record<string, any>;
 type Pending = {
   method: string;
@@ -83,10 +82,10 @@ export class KimiAdapter implements AIProviderAdapter {
     env.KIMI_CODE_HOME = this.options.home;
     env.KIMI_DISABLE_TELEMETRY = '1';
     env.BROWSER = '/bin/true';
-    const executable = this.options.executable ?? process.execPath;
-    const cli = this.options.executable
-      ? []
-      : [join(dirname(require.resolve('@moonshot-ai/kimi-code/package.json')), 'dist/main.mjs')];
+    const installed = packageRuntime('@moonshot-ai/kimi-code', 'kimi').executable;
+    const javascript = /\.[cm]?js$/.test(installed);
+    const executable = this.options.executable ?? (javascript ? process.execPath : installed);
+    const cli = this.options.executable || !javascript ? [] : [installed];
     // Apply the configured umask to the child only, just as for Codex execution.
     return spawn(
       '/bin/sh',

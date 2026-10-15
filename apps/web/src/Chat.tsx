@@ -1,3 +1,5 @@
+import { TextDrafts, useTextAttachments } from './TextAttachments';
+import { appendTextAttachments } from './text-attachments';
 import { TaskUsage } from './FactoryUsage';
 import { mergeHistoryMessages } from './history-messages';
 import { deduplicateRecoveredQuestions } from './question-messages';
@@ -15,7 +17,7 @@ import {
   X,
   FileText,
   LoaderCircle,
-  ImagePlus,
+  Paperclip,
 } from 'lucide-react';
 import {
   api,
@@ -214,7 +216,7 @@ export function Chat({
   const key = connection + ':' + (workspace?.id ?? 'none');
   const [conversation, setConversation] = useState(() => saved(key + ':conversation', '')),
     [draft, setDraft] = useState(''),
-    [model, setModel] = useState(''),
+    [model, setModel] = useState(() => saved(key + ':model', '')),
     [effort, setEffort] = useState(''),
     [mode, setMode] = useState<Run['permissionMode']>('read-only'),
     [busy, setBusy] = useState(false),
@@ -241,6 +243,17 @@ export function Chat({
     input = useRef<HTMLTextAreaElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   const attachments = useImageAttachments(key, connection, workspace?.id, setError);
+  const textAttachments = useTextAttachments(key, setError);
+  const addFiles = (files: File[]) => {
+    if (busy || !workspace || !online) return;
+    const images = files.filter((file) => file.type.startsWith('image/'));
+    const texts = files.filter((file) => !file.type.startsWith('image/'));
+    if (images.length) {
+      if (selectedModel?.supportsImages === false) setError('所选模型不支持图片，请切换模型。');
+      else void attachments.add(images);
+    }
+    if (texts.length) textAttachments.add(texts);
+  };
   viewKey.current = key;
   conversationRef.current = conversation;
   const availableConversations = useMemo(
@@ -249,7 +262,7 @@ export function Chat({
   );
   const currentConversation = availableConversations.find((c) => c.id === conversation);
   const hasNativeSession =
-    provider === 'codex' &&
+    (provider === 'codex' || provider === 'factory') &&
     (!!currentConversation?.providerSessionId ||
       runs.some((run) => run.conversationId === conversation && !!run.providerTurnId));
   useEffect(() => {
@@ -286,9 +299,15 @@ export function Chat({
     textarea.style.height = Math.min(144, Math.max(64, textarea.scrollHeight)) + 'px';
   }, [draft]);
   useEffect(() => {
-    if (models.length && !models.some((m) => m.id === model))
-      setModel(models.find((m) => m.isDefault)?.id ?? models[0].id);
-  }, [models, model]);
+    if (models.length && !models.some((m) => m.id === model)) {
+      // The catalog can arrive before or after the saved selection is restored.
+      // Prefer that selection in either order instead of overwriting it on mount.
+      const preferred = saved(key + ':model', '');
+      setModel(
+        models.find((m) => m.id === preferred)?.id ?? models.find((m) => m.isDefault)?.id ?? models[0].id,
+      );
+    }
+  }, [models, model, key]);
   useEffect(() => {
     // An explicitly selected blank draft must survive refreshes and incoming snapshots.
     const selected = saved<string | null>(key + ':conversation', null);
@@ -512,6 +531,7 @@ export function Chat({
   const chooseConversation = (id: string, preservePending = false) => {
     if (!preservePending) {
       attachments.clear();
+      textAttachments.clear();
       pending.current = null;
       save(key + ':pending', null);
     }
@@ -559,8 +579,9 @@ export function Chat({
     if (
       busy ||
       attachments.pending ||
+      textAttachments.pending ||
       (attachments.ids.length > 0 && selectedModel?.supportsImages === false) ||
-      (!draft.trim() && !attachments.ids.length) ||
+      (!draft.trim() && !attachments.ids.length && !textAttachments.items.length) ||
       composition.current ||
       !workspace ||
       !online ||
@@ -573,17 +594,19 @@ export function Chat({
     // Capture target and content before any async operation; switching views cannot reroute it.
     const target = connection,
       workspaceId = workspace.id,
-      text =
+      text = appendTextAttachments(
         draft.trim() +
-        (references.length
-          ? '\n\n用户选择的上下文引用（只提供以下文本）：\n' +
-            references
-              .map(
-                (r) =>
-                  `[${r.path} · 版本 ${r.version}${r.page ? ' · 页 ' + r.page : r.line ? ' · 行 ' + r.line : ''}]\n${r.text}`,
-              )
-              .join('\n\n')
-          : ''),
+          (references.length
+            ? '\n\n用户选择的上下文引用（只提供以下文本）：\n' +
+              references
+                .map(
+                  (r) =>
+                    `[${r.path} · 版本 ${r.version}${r.page ? ' · 页 ' + r.page : r.line ? ' · 行 ' + r.line : ''}]\n${r.text}`,
+                )
+                .join('\n\n')
+            : ''),
+        textAttachments.items,
+      ),
       targetModel = model;
     const imageIds = [...attachments.ids];
     const fingerprint = JSON.stringify({
@@ -604,7 +627,7 @@ export function Chat({
       let id = operation.conversationId;
       if (!id) {
         const result = await api(base(target) + `/workspaces/${workspaceId}/conversations`, {
-          title: draft.trim().slice(0, 80) || '图片对话',
+          title: draft.trim().slice(0, 80) || textAttachments.items[0]?.name.slice(0, 80) || '图片对话',
         });
         id = result.conversation.id;
         operation.conversationId = id;
@@ -622,9 +645,11 @@ export function Chat({
       save(key + ':draft', '');
       save(key + ':pending', null);
       save(key + ':images', []);
+      save(key + ':text-files', []);
       if (!mounted.current || viewKey.current !== key) return;
       setDraft('');
       attachments.clear();
+      textAttachments.clear();
       setReferences([]);
       pending.current = null;
       onRefresh();
@@ -832,7 +857,13 @@ export function Chat({
                           }))}
                       />
                       {runMessages
-                        .filter((m) => m.kind !== 'tool')
+                        .filter(
+                          (m) =>
+                            m.kind !== 'tool' &&
+                            (m.kind === 'user' ||
+                              m.text.trim().length > 0 ||
+                              (Array.isArray(m.payload.questions) && m.payload.questions.length > 0)),
+                        )
                         .map((message) =>
                           message.kind === 'user' ? (
                             <div key={message.id} className="user-message">
@@ -933,18 +964,28 @@ export function Chat({
             </button>
           </div>
         ))}
-        <div className="composer">
+        <div
+          className="composer"
+          onDragOver={(event) => {
+            if (event.dataTransfer.types.includes('Files')) event.preventDefault();
+          }}
+          onDrop={(event) => {
+            if (event.dataTransfer.files.length) {
+              event.preventDefault();
+              addFiles(Array.from(event.dataTransfer.files));
+            }
+          }}
+        >
           <ImageDrafts items={attachments.items} disabled={busy} onRemove={attachments.remove} />
+          <TextDrafts items={textAttachments.items} disabled={busy} onRemove={textAttachments.remove} />
           <input
             ref={imageInput}
             type="file"
-            accept="image/png,image/jpeg,image/webp"
             multiple
             hidden
-            aria-label="图片附件"
+            aria-label="文件附件"
             onChange={(event) => {
-              if (!busy && selectedModel?.supportsImages !== false)
-                void attachments.add(Array.from(event.target.files ?? []));
+              addFiles(Array.from(event.target.files ?? []));
               event.target.value = '';
             }}
           />
@@ -955,17 +996,10 @@ export function Chat({
               aria-describedby={last?.contextUsage ? `context-usage-${key}` : undefined}
               value={draft}
               onPaste={(event) => {
-                const files = Array.from(event.clipboardData.files).filter((file) =>
-                  file.type.startsWith('image/'),
-                );
+                const files = Array.from(event.clipboardData.files);
                 if (!files.length) return;
                 if (!event.clipboardData.getData('text/plain')) event.preventDefault();
-                if (busy) return;
-                if (selectedModel?.supportsImages === false) {
-                  setError('所选模型不支持图片，请切换模型。');
-                  return;
-                }
-                void attachments.add(files);
+                addFiles(files);
               }}
               onChange={(e) => {
                 setDraft(e.target.value);
@@ -994,7 +1028,7 @@ export function Chat({
                   void send();
                 }
               }}
-              placeholder="描述你想完成的工作，也可以粘贴截图…"
+              placeholder="描述你想完成的工作，也可以添加文件或粘贴截图…"
               title={['电脑：Enter 发送，Shift+Enter 换行', contextUsageLabel].filter(Boolean).join('\n')}
               rows={2}
             />
@@ -1110,18 +1144,12 @@ export function Chat({
               )}
               <button
                 className="attach-image-button"
-                aria-label="添加图片"
-                title="添加图片或粘贴截图，每条最多 4 张"
-                disabled={
-                  busy ||
-                  !online ||
-                  !workspace ||
-                  selectedModel?.supportsImages === false ||
-                  attachments.items.length >= 4
-                }
+                aria-label="添加附件"
+                title="添加图片、JSON、TXT、CSV、Markdown 或代码等文本文件"
+                disabled={busy || !online || !workspace}
                 onClick={() => imageInput.current?.click()}
               >
-                <ImagePlus size={18} />
+                <Paperclip size={18} />
               </button>
               {running && (
                 <button
@@ -1144,7 +1172,8 @@ export function Chat({
                 disabled={
                   busy ||
                   attachments.pending ||
-                  (!draft.trim() && !attachments.ids.length) ||
+                  textAttachments.pending ||
+                  (!draft.trim() && !attachments.ids.length && !textAttachments.items.length) ||
                   (attachments.ids.length > 0 && selectedModel?.supportsImages === false) ||
                   !online ||
                   !workspace ||

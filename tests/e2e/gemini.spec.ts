@@ -55,10 +55,14 @@ test('Gemini（测试） login, model selection, account isolation, task submiss
   await page.reload();
   await expect(page.getByLabel('模型', { exact: true })).toHaveValue('gemini-3.1-pro-high');
   await expect(page.getByRole('button', { name: 'Gemini（测试）会话', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '添加图片', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '添加附件', exact: true })).toBeEnabled();
   await expect(page.getByLabel('权限模式').locator('option[value="workspace-write"]')).toHaveText(
     '按规则执行（测试）',
   );
+  await expect(
+    page.getByLabel('模型', { exact: true }).locator('option[value="gpt-oss-120b-medium"]'),
+  ).toHaveText('GPT-OSS 120B (Medium)（测试）');
+  await page.getByLabel('模型', { exact: true }).selectOption('claude-opus-5-5-high');
   await page.getByLabel('推理强度').selectOption('low');
   await page.getByLabel('权限模式').selectOption('workspace-write');
   const help = page.locator('.composer-help');

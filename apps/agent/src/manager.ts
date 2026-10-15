@@ -146,6 +146,7 @@ export class Manager {
         ? new FactoryAdapter({
             cwd,
             home: config.factoryHome ?? join(config.stateDir, 'factory'),
+            sessionHome: config.factorySessionHome,
             executable: config.factoryExecutable,
             taskUmask: config.taskUmask,
           })
@@ -434,7 +435,8 @@ export class Manager {
   }
   async nativeHistory(conversationId: string, limit = 100): Promise<NativeSessionHistory | undefined> {
     const conversation = this.conversation(conversationId);
-    if (!conversation.providerSessionId || conversation.providerId !== 'codex') return undefined;
+    if (!conversation.providerSessionId || !['codex', 'factory'].includes(conversation.providerId))
+      return undefined;
     const { workspace, adapter } = await this.nativeProvider(conversation.workspaceId);
     const history = await adapter.readNativeSession!(conversation.providerSessionId, { limit });
     if (history.id !== conversation.providerSessionId)
@@ -985,7 +987,7 @@ export class Manager {
             state: 'restored',
             ...(checkpoint.filesOnly ? { scope: 'files' as const } : {}),
           };
-          this.state(run, run.state);
+          this.state(run, run.state, run.error ?? undefined);
           this.store.put('restoreOperation', input.clientRequestId, {
             fingerprint,
             conversation: restored,
@@ -1135,9 +1137,9 @@ export class Manager {
       if (!model) throw new AppError('unsupported_feature', '所选模型当前不可用');
       if (run.reasoningEffort && !model.reasoningEfforts.includes(run.reasoningEffort))
         throw new AppError('unsupported_feature', '模型不支持所选推理强度');
-      // Kimi and Droid can continue through other billing pools after one window is exhausted.
+      // Kimi, Droid and Antigravity can continue through other billing pools after one window is exhausted.
       // Their official harnesses enforce entitlements; quota lookup must not delay or block a prompt.
-      const quota = ['kimi', 'factory'].includes(this.config.provider ?? '')
+      const quota = ['kimi', 'factory', 'antigravity'].includes(this.config.provider ?? '')
         ? null
         : await adapter.getQuota();
       if (

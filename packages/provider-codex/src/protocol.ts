@@ -7,6 +7,12 @@ import { AppError } from '../../contracts/src/index.ts';
 import type { ClientRequest } from '../../../generated/codex/ClientRequest.ts';
 
 export const SUPPORTED_CODEX_VERSION = '0.154.0-alpha.6.2';
+// This is the schema generation baseline, not an exact runtime version requirement.
+export function validateCodexVersion(value: string) {
+  const match = /^codex-cli (\d+)\.(\d+)\.(\d+)(?:[-+][\w.-]+)?$/.exec(value.trim());
+  if (!match || (Number(match[1]) === 0 && Number(match[2]) < 154))
+    throw new Error(`Codex 版本过旧或无效：${value.trim()}；需要 0.154.0 或更新版本`);
+}
 const ajv = new Ajv({ strict: false, validateFormats: false, allErrors: false });
 const validators = new Map<string, ValidateFunction>();
 export function validateSchema<T>(name: string, value: unknown): asserts value is T {
@@ -53,10 +59,7 @@ export class CodexRpc {
   async open(): Promise<void> {
     const { stdout } = await promisify(execFile)(this.options.executable, ['--version'], { timeout: 10000 });
     this.version = stdout.trim();
-    if (this.version !== `codex-cli ${SUPPORTED_CODEX_VERSION}`)
-      throw new Error(
-        `Codex version ${this.version} is not validated; expected codex-cli ${SUPPORTED_CODEX_VERSION}. Regenerate schemas and run contract tests before upgrading.`,
-      );
+    validateCodexVersion(this.version);
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       ...(this.options.codexHome ? { CODEX_HOME: this.options.codexHome } : {}),

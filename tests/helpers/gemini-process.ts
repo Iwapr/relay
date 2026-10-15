@@ -18,7 +18,7 @@ appendFileSync(join(home, 'launches.jsonl'), JSON.stringify(args)+'\\n');
 if (args[0] === 'models') {
  if (!existsSync(auth)) { console.error('Error: Please sign in to view available models.'); process.exit(1); }
  console.error('Fetching available models...');
- console.log('gemini-3.1-pro-high  Gemini 3.1 Pro (High)\\ngemini-3.1-pro-low  Gemini 3.1 Pro (Low)\\ngemini-3.8-flash-medium  Gemini 3.8 Flash (Medium)\\nclaude-sonnet-4-6  Claude Sonnet 4.6');
+ console.log('gemini-3.1-pro-high  Gemini 3.1 Pro (High)\\ngemini-3.1-pro-low  Gemini 3.1 Pro (Low)\\ngemini-3.8-flash-medium  Gemini 3.8 Flash (Medium)\\nclaude-sonnet-4-6  Claude Sonnet 4.6\\nclaude-opus-5-5-low  Claude Opus 5.5 (Low)\\nclaude-opus-5-5-high  Claude Opus 5.5 (High)\\ngpt-oss-120b-medium  GPT-OSS 120B (Medium)');
  process.exit(0);
 }
 if (args[0] === '-p' && args[1] === '/usage') {

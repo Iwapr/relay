@@ -15,6 +15,7 @@ test('Gemini native discovery preserves aliases, excludes subagents, resumes wit
   const dir = join(home, '.gemini', 'antigravity-cli');
   await mkdir(dir, { recursive: true });
   await mkdir(join(home, 'relay-sessions'));
+  await writeFile(join(home, 'fixture-auth'), 'authorized');
   const db = new DatabaseSync(join(dir, 'conversation_summaries.db'));
   db.exec(
     'CREATE TABLE conversation_summaries(conversation_id TEXT,title TEXT,workspace_uris TEXT,last_modified_time TEXT,status TEXT,not_fully_idle INTEGER,parent_conversation_id TEXT,nesting_depth INTEGER)',

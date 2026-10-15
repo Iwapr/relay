@@ -86,7 +86,8 @@ export const gatewayConfigSchema = z
       .max(20)
       .default([]),
     staticDir: absolute.optional(),
-    sessionTtlSeconds: z.number().int().min(60).max(604800).default(43200),
+    // Zero disables automatic session expiry.
+    sessionTtlSeconds: z.union([z.literal(0), z.number().int().min(60).max(604800)]).default(0),
     host: z
       .string()
       .refine(

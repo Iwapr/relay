@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { buildGateway } from '../../apps/gateway/src/server.ts';
-import { hashPassword, verifyPassword } from '../../apps/gateway/src/auth.ts';
+import { GatewayAuth, hashPassword, verifyPassword } from '../../apps/gateway/src/auth.ts';
 import { gatewayConfigSchema, type GatewayConfig } from '../../apps/gateway/src/config.ts';
 import { AgentTransport, sshArguments } from '../../packages/transport-ssh/src/index.ts';
 
@@ -40,6 +40,7 @@ async function fixture() {
     lastEventId: string | undefined;
   }[] = [];
   const remote = createServer(async (req, res) => {
+    req.setEncoding('utf8');
     let body = '';
     for await (const part of req) body += part;
     requests.push({
@@ -343,7 +344,8 @@ test('PDF Range and SSE stream pass through without browser cookies or remote se
     assert.equal(file.statusCode, 206, file.body);
     assert.equal(file.body, '%PDF');
     assert.equal(file.headers['content-range'], 'bytes 0-3/100');
-    assert.equal(file.headers['set-cookie'], undefined);
+    assert.match(String(file.headers['set-cookie']), /^relay_session=/);
+    assert(!String(file.headers['set-cookie']).includes('remote_secret'));
     assert.equal(file.headers['x-accel-buffering'], 'no');
     assert.match(String(file.headers['cache-control']), /no-store/);
     const received = f.requests.at(-1)!;
@@ -366,6 +368,27 @@ test('PDF Range and SSE stream pass through without browser cookies or remote se
     });
     assert.equal(run.statusCode, 200);
     assert.deepEqual(JSON.parse(f.requests.at(-1)!.body), task);
+    const longTask = { ...task, text: '中文\\u7ecd"'.repeat(150000) };
+    assert.ok(Buffer.byteLength(JSON.stringify(longTask)) > 1024 * 1024);
+    for (const prefix of ['', '/accounts/12345678-1234-4234-8234-123456789abc']) {
+      for (const action of ['runs', 'reply']) {
+        const response = await f.app.inject({
+          method: 'POST',
+          url: `/api/connections/office${prefix}/conversations/conversation-a/${action}`,
+          headers: { origin, cookie, 'x-csrf-token': csrf },
+          payload: longTask,
+        });
+        assert.equal(response.statusCode, 200, response.body.slice(0, 200));
+        assert.deepEqual(JSON.parse(f.requests.at(-1)!.body), longTask);
+      }
+    }
+    const oversizedOtherRoute = await f.app.inject({
+      method: 'POST',
+      url: '/api/connections/office/workspaces/open',
+      headers: { origin, cookie, 'x-csrf-token': csrf },
+      payload: longTask,
+    });
+    assert.equal(oversizedOtherRoute.statusCode, 413);
     await f.restart();
     assert(f.remote.listening, 'Agent process outlives Gateway close');
   } finally {
@@ -507,6 +530,7 @@ test('production Cookie is host-bound and Secure; expired persisted sessions are
   try {
     f.config.secureCookies = true;
     f.config.publicOrigin = 'https://workbench.example';
+    f.config.sessionTtlSeconds = 60;
     await f.restart();
     const response = await f.app.inject({
       method: 'POST',
@@ -629,6 +653,75 @@ test('owner cookie and CSRF protect account creation and account-scoped routes',
       ).statusCode,
       404,
     );
+  } finally {
+    await f.close();
+  }
+});
+
+test('persistent sessions survive time and restart but remain revocable', async (t) => {
+  const f = await fixture();
+  let auth: GatewayAuth | undefined;
+  try {
+    const config = gatewayConfigSchema.parse(f.config);
+    assert.equal(config.sessionTtlSeconds, 0);
+    auth = new GatewayAuth(config);
+    const { token } = auth.createSession();
+    t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+    t.mock.timers.tick(5 * 365 * 24 * 60 * 60 * 1000);
+    auth.cleanup();
+    assert.ok(auth.getSession(token));
+    auth.close();
+    auth = new GatewayAuth(config);
+    assert.ok(auth.getSession(token));
+    auth.revoke(token);
+    assert.equal(auth.getSession(token), undefined);
+    const next = auth.createSession();
+    auth.close();
+    auth = new GatewayAuth({ ...config, owner: { ...config.owner, username: 'renamed' } });
+    assert.equal(auth.getSession(next.token), undefined);
+  } finally {
+    t.mock.timers.reset();
+    auth?.close();
+    await f.close();
+  }
+});
+
+test('persistent mode migrates only valid sessions and fixed expiry can be restored', async (t) => {
+  const f = await fixture();
+  let auth: GatewayAuth | undefined;
+  try {
+    const config = gatewayConfigSchema.parse({ ...f.config, sessionTtlSeconds: 60 });
+    t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+    auth = new GatewayAuth(config);
+    const expired = auth.createSession();
+    t.mock.timers.tick(61000);
+    assert.equal(auth.getSession(expired.token), undefined);
+    const valid = auth.createSession();
+    auth.close();
+    auth = new GatewayAuth({ ...config, sessionTtlSeconds: 0 });
+    assert.equal(auth.getSession(expired.token), undefined);
+    t.mock.timers.tick(24 * 60 * 60 * 1000);
+    assert.equal(auth.getSession(valid.token)?.expiresAt, 0);
+    auth.close();
+    auth = new GatewayAuth(config);
+    assert.ok(auth.getSession(valid.token));
+    t.mock.timers.tick(61000);
+    assert.equal(auth.getSession(valid.token), undefined);
+  } finally {
+    t.mock.timers.reset();
+    auth?.close();
+    await f.close();
+  }
+});
+
+test('persistent browser cookie is renewed on authenticated requests', async () => {
+  const f = await fixture();
+  try {
+    const { cookie } = await f.login();
+    const me = await f.app.inject({ url: '/api/me', headers: { cookie } });
+    assert.equal(me.statusCode, 200);
+    assert.match(String(me.headers['set-cookie']), /Max-Age=34560000/);
+    assert.equal(me.cookies[0].name + '=' + me.cookies[0].value, cookie);
   } finally {
     await f.close();
   }

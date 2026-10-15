@@ -1,5 +1,7 @@
 import { RunUsageSchema } from '../../contracts/src/index.ts';
 import * as sdk from '@factory/droid-sdk/node';
+import { FactoryTransport } from './transport.ts';
+import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { readFile, writeFile, rename } from 'node:fs/promises';
@@ -27,6 +29,15 @@ export interface FactoryBridge {
 export function factoryError(value: unknown): string {
   const text =
     value instanceof Error ? value.message : typeof value === 'string' ? value : JSON.stringify(value);
+  if (/5-hour standard usage limit/i.test(text)) {
+    const reset = /resets in (\d{1,3})h (\d{1,2})min/i.exec(text);
+    return `Factory 5 小时标准额度已用完${reset ? `（约 ${reset[1]} 小时 ${reset[2]} 分钟后重置）` : ''}，请等待额度重置，或在 Factory 官方账号中选择 Droid Core / 开启 Extra Usage`;
+  }
+  if (/\b402\b|payment.required/i.test(text))
+    return 'Factory 返回 402：当前请求受额度或计费限制，请在官方账号中检查额度和计费设置';
+  if (/Session workspace mismatch/.test(text))
+    return 'Droid 会话目录与当前项目不匹配，无法继续此会话；请检查原会话目录';
+  if (/Session identity mismatch/.test(text)) return 'Droid 返回的会话标识与原会话不一致，已停止恢复';
   if (/\b403\b/.test(text))
     return 'Factory 拒绝请求（403），请检查服务器网络入口和账号权限；此状态不能单独证明 API Key 无效';
   if (/401|unauth|authentication|api.key|invalid.key/i.test(text))
@@ -120,10 +131,27 @@ export async function runFactory(
   const record = JSON.parse(await readFile(request.sessionFile!, 'utf8'));
   if (record.cwd !== resolve(request.cwd)) throw new Error('Session workspace mismatch');
   let session: sdk.DroidSession | undefined;
+  let transport: FactoryTransport | undefined;
   try {
+    if (driver === sdk) {
+      const { version } = JSON.parse(
+        readFileSync(new URL('../package.json', import.meta.resolve('@factory/droid-sdk/node')), 'utf8'),
+      );
+      transport = new FactoryTransport({
+        droidExecPath: request.executable,
+        cwd: request.cwd,
+        env: {
+          FACTORY_API_KEY: request.apiKey,
+          FACTORY_UPSTREAM_CLIENT_TYPE: 'sdk',
+          FACTORY_UPSTREAM_SDK: `typescript/${version}`,
+        },
+      });
+      await transport.connect();
+    }
+    const sessionOptions = { ...options, ...(transport ? { transport } : {}) };
     session = record.nativeId
-      ? await driver.resumeSession(record.nativeId, options)
-      : await driver.createSession({ ...options, ...settings, cwd: request.cwd });
+      ? await driver.resumeSession(record.nativeId, sessionOptions)
+      : await driver.createSession({ ...sessionOptions, ...settings, cwd: request.cwd });
     if (resolve(session.cwd ?? '') !== resolve(request.cwd)) throw new Error('Session workspace mismatch');
     if (record.nativeId && session.id !== record.nativeId) throw new Error('Session identity mismatch');
     if (!record.nativeId) {
@@ -199,6 +227,10 @@ export async function runFactory(
       ? { state: 'cancelled' }
       : (outcome ?? { state: 'failed', error: 'Droid 未返回任务结束状态，请检查已有结果' });
   } finally {
-    await session?.close();
+    try {
+      await session?.close();
+    } finally {
+      await transport?.close();
+    }
   }
 }

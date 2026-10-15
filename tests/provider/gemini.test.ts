@@ -36,7 +36,7 @@ async function fixture(authorized = true) {
     },
   };
 }
-test('Gemini discovers only Gemini models without a paid prompt and strips host credentials', async () => {
+test('Gemini discovers all Antigravity models without a paid prompt and strips host credentials', async () => {
   const keys = ['GEMINI_API_KEY', 'GOOGLE_APPLICATION_CREDENTIALS', 'ANTIGRAVITY_LS_ADDRESS'];
   const previous = keys.map((k) => process.env[k]);
   keys.forEach((k) => (process.env[k] = 'host-secret'));
@@ -44,17 +44,20 @@ test('Gemini discovers only Gemini models without a paid prompt and strips host 
   try {
     assert.equal((await f.adapter.getAccount()).authMode, 'google-antigravity');
     const models = await f.adapter.listModels();
-    assert.equal(models.length, 3);
+    assert.equal(models.length, 7);
     assert.ok(models.every((m) => !m.supportsImages && m.displayName.includes('测试')));
     assert.deepEqual(await f.lines('launches.jsonl'), [['models']]);
     assert.deepEqual(models[0].reasoningEfforts, ['low', 'high']);
     const quota = await f.adapter.getQuota();
     assert.deepEqual(
       quota?.windows.map((w) => w.usedPercent),
-      [25, 50],
+      [25, 50, 100],
     );
     assert.equal(quota?.stale, false);
-    assert.ok(quota?.windows.every((w) => w.scope === 'Gemini'));
+    assert.deepEqual(
+      quota?.windows.map((w) => w.scope),
+      ['Gemini', 'Gemini', 'Claude / GPT'],
+    );
     assert.equal(f.adapter.capabilities().approvals, false);
   } finally {
     await f.close();
@@ -106,7 +109,7 @@ for (const mode of ['read-only', 'workspace-write', 'full-access'] as const)
         'Gemini hello',
       );
       assert.equal(f.events.find((e) => e.type === 'tool.completed')?.payload.text, 'tests passed');
-      const args = (await f.lines('launches.jsonl'))[0];
+      const args = (await f.lines('launches.jsonl')).find((args: string[]) => args.includes('--model'));
       assert.equal(args[args.indexOf('--mode') + 1], mode === 'read-only' ? 'plan' : 'accept-edits');
       assert.equal(args.includes('--dangerously-skip-permissions'), mode === 'full-access');
       const mapping = JSON.parse(
@@ -179,7 +182,11 @@ test('Gemini identifies missing CLI before starting the login PTY', async () => 
   const f = await fixture(false);
   const adapter = new GeminiAdapter({ ...f.options, executable: join(f.directory, 'missing-agy') });
   try {
-    await assert.rejects(adapter.beginLogin(), /未找到可执行的 Antigravity CLI/);
+    await assert.rejects(adapter.beginLogin(), {
+      code: 'provider_setup_required',
+      statusCode: 422,
+      message: /未找到可执行的 Antigravity CLI/,
+    });
   } finally {
     await adapter.close();
     await f.close();
@@ -200,6 +207,56 @@ test('Gemini effort selects the matching model slug and records effective settin
       f.adapter.startRun({ ...f.input, sessionId: session.id, text: 'hello', reasoningEffort: 'medium' }),
       /不支持/,
     );
+  } finally {
+    await f.close();
+  }
+});
+
+for (const [model, effort, effective] of [
+  ['claude-sonnet-4-6', undefined, 'claude-sonnet-4-6'],
+  ['claude-opus-5-5-low', 'high', 'claude-opus-5-5-high'],
+  ['gpt-oss-120b-medium', 'medium', 'gpt-oss-120b-medium'],
+] as const) {
+  test(`Antigravity runs and resumes ${model} with its official model identifier`, async () => {
+    const f = await fixture();
+    try {
+      const input = { ...f.input, model, reasoningEffort: effort };
+      const session = await f.adapter.createSession(input);
+      await f.adapter.startRun({ ...input, sessionId: session.id, text: 'hello' });
+      await until(() => f.events.some((e) => e.type === 'run.completed'));
+      await f.adapter.resumeSession(session);
+      f.events.length = 0;
+      await f.adapter.startRun({ ...input, sessionId: session.id, text: 'again' });
+      await until(() => f.events.some((e) => e.type === 'run.completed'));
+      const launches = (await f.lines('launches.jsonl')).filter((args: string[]) => args.includes('--model'));
+      assert.equal(launches.length, 2);
+      assert.ok(launches.every((args: string[]) => args[args.indexOf('--model') + 1] === effective));
+      assert.ok(launches[1].includes('--conversation'));
+    } finally {
+      await f.close();
+    }
+  });
+}
+
+test('Antigravity rejects unlisted models and unsupported cross-family effort without submitting a prompt', async () => {
+  const f = await fixture();
+  try {
+    const session = await f.adapter.createSession(f.input);
+    for (const [model, reasoningEffort] of [
+      ['unlisted-model', undefined],
+      ['claude-opus-5-5-low', 'medium'],
+    ]) {
+      await assert.rejects(
+        f.adapter.startRun({
+          ...f.input,
+          sessionId: session.id,
+          text: 'hello',
+          model: model!,
+          reasoningEffort,
+        }),
+      );
+    }
+    assert.ok((await f.lines('launches.jsonl')).every((args: string[]) => !args.includes('--model')));
   } finally {
     await f.close();
   }

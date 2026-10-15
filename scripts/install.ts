@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import { createServer, connect } from 'node:net';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
-import { SUPPORTED_CODEX_VERSION } from '../packages/provider-codex/src/protocol.ts';
 import { codexExecutable, validateCodexExecutable } from './codex-executable.ts';
 import { selectLanAddress } from './lan-address.ts';
 import { isPrivateIPv4 } from '../apps/gateway/src/config.ts';
@@ -99,7 +98,7 @@ async function main() {
       try {
         await validateCodexExecutable(codex);
       } catch {
-        console.log(`正在安装官方 Codex CLI ${SUPPORTED_CODEX_VERSION}（仅当前项目使用）…`);
+        console.log('正在安装官方 Codex CLI 最新稳定版（仅当前项目使用）…');
         await mkdir(prefix, { recursive: true, mode: 0o700 });
         await run('npm', [
           'install',
@@ -110,7 +109,7 @@ async function main() {
           '--save-exact',
           '--registry',
           'https://registry.npmjs.org',
-          `@openai/codex@${SUPPORTED_CODEX_VERSION}`,
+          '@openai/codex@latest',
         ]);
         await validateCodexExecutable(codex);
       }

@@ -164,6 +164,7 @@ function media(filename: string): Pick<FileMetadata, 'mime' | 'preview'> {
     '.gif': 'image/gif',
     '.webp': 'image/webp',
     '.avif': 'image/avif',
+    '.svg': 'image/svg+xml',
   };
   if (images[extension]) return { mime: images[extension], preview: 'image' };
   if (['.md', '.markdown', '.mdx'].includes(extension))
@@ -180,7 +181,6 @@ function media(filename: string): Pick<FileMetadata, 'mime' | 'preview'> {
       '.xml',
       '.html',
       '.htm',
-      '.svg',
       '.js',
       '.jsx',
       '.ts',

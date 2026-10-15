@@ -34,8 +34,8 @@ const allowedRoutes: [string, RegExp][] = [
   ['POST', /^\/providers\/codex\/accounts\/[a-f0-9-]{36}\/delete$/],
   ['POST', /^\/providers\/(codex|kimi|claude|antigravity)\/login(\/cancel)?$/],
   ['POST', /^\/providers\/(claude|antigravity)\/login\/code$/],
-  ['GET', /^\/providers\/(codex|antigravity)\/sessions$/],
-  ['POST', /^\/providers\/(codex|antigravity)\/sessions\/import$/],
+  ['GET', /^\/providers\/(codex|antigravity|factory)\/sessions$/],
+  ['POST', /^\/providers\/(codex|antigravity|factory)\/sessions\/import$/],
 ];
 export function isAllowedAgentRoute(method: string, path: string): boolean {
   const scoped = /^\/accounts\/([a-f0-9-]{36})(\/.*)$/.exec(path);

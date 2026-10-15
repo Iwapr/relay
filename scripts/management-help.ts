@@ -4,6 +4,7 @@ export function managementHelp(mode: 'systemd' | 'foreground' | 'unknown' = 'unk
     '日常管理（在 Relay 项目目录执行）：',
     '  ./relay info       查看访问地址、账号和密码',
     '  ./relay status     查看运行状态',
+    '  ./relay update     更新全部 AI 客户端；共享部署自动更新所有已登记用户',
     '  ./relay help       再次查看这些说明',
   ];
   if (mode !== 'foreground')

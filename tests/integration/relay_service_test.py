@@ -90,6 +90,17 @@ class ReleaseTests(unittest.TestCase):
                                 cwd=release, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_updated_codex_comes_from_published_dependency_snapshot(self):
+        modules = self.source / 'node_modules'
+        (modules / 'codex').write_text('new official CLI')
+        (modules / 'codex').chmod(0o755)
+        (modules / '.bin/codex').symlink_to('../codex')
+        with patch.object(service, 'user_command', side_effect=self.build):
+            release = service.publish(self.config)
+        self.assertEqual((release / 'codex/codex').read_text(), 'new official CLI')
+        (modules / 'codex').write_text('subsequent source update')
+        self.assertEqual((release / 'codex/codex').read_text(), 'new official CLI')
+
     def test_dependency_changes_and_concurrent_edit(self):
         with patch.object(service, 'user_command', side_effect=self.build):
             service.publish(self.config)
@@ -250,6 +261,76 @@ class ReleaseTests(unittest.TestCase):
         with sqlite3.connect(self.source / 'agent.sqlite') as db:
             db.execute('UPDATE objects SET data=?', ('{"state":"completed"}',))
         service.ensure_idle(descriptor)
+
+    def test_google_binary_is_shared_and_versioned_without_credentials(self):
+        binary = self.source / '.runtime/shared-providers/agy'
+        binary.parent.mkdir()
+        binary.write_text('google version one')
+        binary.chmod(0o700)
+        (binary.parent / 'credentials.json').write_text('private')
+        with patch.object(service, 'user_command', side_effect=self.build):
+            first = service.publish(self.config)
+            self.assertEqual((first / 'providers/agy').read_text(), 'google version one')
+            self.assertEqual((first / 'providers/agy').stat().st_mode & 0o777, 0o755)
+            self.assertFalse((first / 'providers/credentials.json').exists())
+            binary.write_text('google version two')
+            second = service.publish(self.config)
+            self.assertNotEqual(first, second)
+            self.assertEqual((first / 'providers/agy').read_text(), 'google version one')
+
+    def test_additional_account_queue_blocks_update(self):
+        agent = self.source / 'agent.json'
+        agent.write_text(json.dumps({'stateDir': str(self.source)}))
+        child = self.source / 'accounts/google/state'
+        child.mkdir(parents=True)
+        with sqlite3.connect(child / 'agent.sqlite') as db:
+            db.execute('CREATE TABLE objects(kind TEXT, data TEXT)')
+            db.execute('INSERT INTO objects VALUES (?, ?)', ('run', '{"state":"queued"}'))
+        with self.assertRaisesRegex(RuntimeError, 'active or queued'):
+            service.ensure_idle({'user': 'example', 'agentConfig': str(agent)})
+
+    def test_update_all_stages_before_restarting_and_keeps_stopped_users_stopped(self):
+        specs = service.CONFIG / 'instances'
+        specs.mkdir(parents=True)
+        for name in ('one', 'two'):
+            (specs / (name + '.json')).write_text(json.dumps({'user': name}))
+        (service.CONFIG / 'source.json').write_text(json.dumps(self.config))
+        helper = self.source / 'helper'
+        release = service.CODE / 'releases/test'
+        calls = []
+        def command(argv, **kwargs):
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 1 if argv[-1] == 'relay@two.service' else 0)
+        with patch.object(service, 'HELPER', helper), \
+             patch.object(service, 'trusted_json', side_effect=lambda p: json.loads(p.read_text())), \
+             patch.object(service, 'account'), patch.object(service, 'ensure_idle') as idle, \
+             patch.object(service, 'user_command') as update, \
+             patch.object(service, 'publish', return_value=release) as publish, \
+             patch.object(service, 'check_instance') as check, \
+             patch.object(service.subprocess, 'run', side_effect=command):
+            # Download/validation failure must not stop any live service.
+            update.side_effect = RuntimeError('download failed')
+            with self.assertRaisesRegex(RuntimeError, 'download failed'):
+                service.update_all()
+            self.assertEqual(calls, [])
+            publish.assert_not_called()
+            update.side_effect = None
+            service.update_all()
+            self.assertIn('--shared', update.call_args.args[1])
+            self.assertEqual(check.call_count, 2)
+            self.assertIn(['systemctl', 'restart', 'relay@one.service'], calls)
+            self.assertNotIn(['systemctl', 'restart', 'relay@two.service'], calls)
+            self.assertEqual((service.STATE / 'instances/two.release').read_text().strip(), str(release))
+            calls.clear()
+            idle.reset_mock()
+            service.update_all(check_only=True)
+            self.assertIn('--check', update.call_args.args[1])
+            idle.assert_not_called()
+            self.assertEqual(calls, [])
+            idle.side_effect = RuntimeError('active or queued')
+            with self.assertRaisesRegex(RuntimeError, 'active or queued'):
+                service.update_all()
+            self.assertEqual(calls, [])
 
 
 if __name__ == '__main__':

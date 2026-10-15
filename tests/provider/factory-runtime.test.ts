@@ -121,6 +121,20 @@ test('Factory maps permission modes, offered outcomes, indexed questions and ima
   }
 });
 
+test('Factory explains upstream standard usage limits without exposing raw diagnostics', () => {
+  const error = {
+    type: 'error',
+    message: '402 {"detail":"You\'ve reached your 5-hour standard usage limit (resets in 0h 50min).","requestId":"private-diagnostic"}',
+  };
+  const message = factoryError(error);
+  assert.match(message, /5 小时标准额度已用完/);
+  assert.match(message, /0 小时 50 分钟/);
+  assert.ok(!message.includes('private-diagnostic'));
+  assert.match(factoryError(new Error('402 Payment Required')), /402.*额度或计费/);
+  assert.match(factoryError(new Error('Session workspace mismatch')), /目录.*不匹配/);
+  assert.match(factoryError(new Error('Session identity mismatch')), /会话标识/);
+});
+
 test('Factory keys save without Public API access, reject malformed input and never disclose secrets', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'factory-keys-'));
   t.after(() => rm(root, { recursive: true, force: true }));

@@ -3,7 +3,7 @@ import './html-preview.css';
 
 const CodePreview = lazy(() => import('./CodePreview').then((m) => ({ default: m.CodePreview })));
 
-export function HtmlPreview({ text, path }: { text: string; path: string }) {
+export function HtmlPreview({ text, path, scale = 1 }: { text: string; path: string; scale?: number }) {
   const [source, setSource] = useState(false);
   const document = useMemo(() => {
     const parsed = new DOMParser().parseFromString(text, 'text/html');
@@ -15,8 +15,9 @@ export function HtmlPreview({ text, path }: { text: string; path: string }) {
     policy.content =
       "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; base-uri 'none'; form-action 'none'";
     parsed.head.prepend(policy);
+    parsed.documentElement.style.setProperty('zoom', String(scale), 'important');
     return '<!doctype html>' + parsed.documentElement.outerHTML;
-  }, [text]);
+  }, [text, scale]);
 
   return (
     <div className="html-preview">
@@ -32,7 +33,9 @@ export function HtmlPreview({ text, path }: { text: string; path: string }) {
       {source ? (
         <div className="html-preview-source">
           <Suspense fallback={<pre>{text}</pre>}>
-            <CodePreview text={text} path={path} />
+            <div style={{ zoom: scale }}>
+              <CodePreview text={text} path={path} />
+            </div>
           </Suspense>
         </div>
       ) : (

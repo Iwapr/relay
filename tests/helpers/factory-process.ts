@@ -33,7 +33,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   return reply(m,{sessionId,session:{messages:[]},settings});
  case 'droid.load_session':
   sessionId=p.sessionId;({cwd,settings}=JSON.parse(fs.readFileSync(path.join(home,sessionId+'.fixture'))));
-  return reply(m,{session:{messages:[]},settings,cwd});
+  return reply(m,{session:{messages:[{id:'historic-assistant',role:'assistant',createdAt:1,updatedAt:1,content:[{type:'text',text:'prior result'}],apiProvider:'azure_anthropic'}]},settings,cwd});
  case 'droid.update_session_settings': settings={...settings,...p}; return reply(m,{});
  case 'droid.add_user_message':
   turn=p.messageId;fs.appendFileSync(path.join(home,'fixture-sessions'),sessionId+'\\n'); reply(m,{});

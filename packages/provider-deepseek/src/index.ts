@@ -1,3 +1,4 @@
+import { optionalPackageRuntime } from '../../provider-core/src/runtime.ts';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile, rename, rm, access } from 'node:fs/promises';
@@ -17,8 +18,10 @@ import type {
 } from '../../provider-core/src/index.ts';
 import { officialRequest, readKey } from './credentials.ts';
 
-export const DEEPSEEK_HARNESS_VERSION = '0.2.0-rc.2';
+export const DEEPSEEK_HARNESS_VERSION =
+  optionalPackageRuntime('@deepseek-ai/dsh', 'dsh')?.version ?? '0.2.0-rc.2';
 export const deepseekExecutable = () =>
+  optionalPackageRuntime('@deepseek-ai/dsh', 'dsh')?.executable ??
   join(homedir(), '.local/share/relay/deepseek', DEEPSEEK_HARNESS_VERSION, 'node_modules/.bin/dsh');
 type Json = Record<string, any>;
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;

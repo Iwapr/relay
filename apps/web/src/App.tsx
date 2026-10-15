@@ -448,7 +448,7 @@ export default function App() {
           try {
             if (pending.threadId) {
               const result = await api<{ conversation: Conversation; workspace: Workspace }>(
-                base(connection) + '/providers/codex/sessions/import',
+                base(connection) + `/providers/${selectedProvider}/sessions/import`,
                 { threadId: pending.threadId },
                 abort.signal,
               );
@@ -656,7 +656,7 @@ export default function App() {
       pendingAccountThread.current = {
         connection: id,
         threadId:
-          selectedProvider === 'codex' && targetProvider === 'codex'
+          ['codex', 'factory'].includes(selectedProvider) && targetProvider === selectedProvider
             ? (selected?.providerSessionId ?? undefined)
             : undefined,
         path: workspace?.canonicalRoot,
@@ -1340,7 +1340,7 @@ export default function App() {
                         : selectedProvider === 'deepseek'
                           ? '使用 DeepSeek 官方 Harness 和官方 API；按量计费。密钥、设置与会话按账号隔离。仅支持完全访问，无沙箱、无需逐次审批。'
                           : selectedProvider === 'antigravity'
-                            ? 'Gemini（测试）使用官方 Antigravity CLI。各账号独立登录和保存会话，模型与额度按实际返回显示；暂不显示邮箱和套餐名称。'
+                            ? 'Gemini（测试）通过官方 Antigravity CLI 提供此账号可用的 Gemini、Claude、GPT 等模型，使用 Google 授权。各账号独立保存会话，模型与各组额度按实际返回显示；暂不显示邮箱和套餐名称。'
                             : selectedProvider !== 'codex'
                               ? '授权与会话按账号独立保存。切换账号后，已提交任务仍由原账号执行。'
                               : 'ChatGPT 账号共享 Codex 历史。“跟随 Codex”使用远端当前登录；其他账号独立授权。'}

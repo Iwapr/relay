@@ -47,6 +47,12 @@ test('combined service preserves private configuration, rejects a duplicate, and
     tokenFile,
     roots: [dir],
     codexExecutable: '/old/codex',
+    claudeExecutable: '/old/claude',
+    kimiExecutable: '/old/kimi',
+    deepseekExecutable: '/old/dsh',
+    factoryExecutable: '/old/droid',
+    antigravityExecutable: '/old/agy',
+    antigravityHome: join(dir, 'private-google'),
   };
   const gateway = {
     publicOrigin: origin,
@@ -75,6 +81,24 @@ test('combined service preserves private configuration, rejects a duplicate, and
     );
     const config = await instanceConfigs(descriptor, dir);
     assert.equal(config.agent.codexExecutable, join(dir, 'codex/codex'));
+    await mkdir(join(dir, 'providers'));
+    await writeFile(join(dir, 'providers/agy'), 'shared google binary');
+    const shared = (await instanceConfigs(descriptor, dir)).agent;
+    assert.equal(shared.antigravityExecutable, join(dir, 'providers/agy'));
+    assert.equal(shared.antigravityHome, agent.antigravityHome);
+    for (const key of [
+      'claudeExecutable',
+      'kimiExecutable',
+      'deepseekExecutable',
+      'factoryExecutable',
+    ] as const)
+      assert.equal(shared[key], undefined);
+    await mkdir(join(dir, 'node_modules/.bin'), { recursive: true });
+    await writeFile(join(dir, 'node_modules/.bin/codex'), '#!/bin/sh\n');
+    assert.equal(
+      (await instanceConfigs(descriptor, dir)).agent.codexExecutable,
+      join(dir, 'node_modules/.bin/codex'),
+    );
     assert.equal(config.gateway.staticDir, join(dir, 'apps/web/dist'));
     instance = await startInstance(descriptor, dir);
     assert.equal((await fetch(origin + '/health')).status, 200);

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { FileText, Download, RefreshCw } from 'lucide-react';
+import { FileText, Download, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react';
 import { ApiError, api, base, fileUrl, save, saved, type Metadata } from './api';
 import { Markdown } from './Markdown';
 import { HtmlPreview } from './HtmlPreview';
@@ -37,6 +37,20 @@ export function Preview({
   const content = useRef<HTMLDivElement>(null),
     lastRevision = useRef(revision);
   const stateKey = connection + ':' + workspace + ':' + path;
+  const [zoomState, setZoomState] = useState({ key: '', value: 1 });
+  const scale = zoomState.key === stateKey ? zoomState.value : saved(stateKey + ':previewZoom', 1);
+  const changeScale = (value: number) => {
+    const next = Math.max(0.25, Math.min(4, Math.round(value * 100) / 100));
+    setZoomState({ key: stateKey, value: next });
+    save(stateKey + ':previewZoom', next);
+  };
+  const [contentWidth, setContentWidth] = useState<number>();
+  useEffect(() => {
+    if (!content.current) return;
+    const observer = new ResizeObserver(([entry]) => setContentWidth(entry.contentRect.width));
+    observer.observe(content.current);
+    return () => observer.disconnect();
+  }, [path]);
   const panel = useRef<HTMLElement>(null);
   const [watchRevision, setWatchRevision] = useState(0);
   useFileWatch(panel, connection, workspace, 'file', path, () => setWatchRevision((r) => r + 1));
@@ -151,6 +165,28 @@ export function Preview({
           文件有新版本，点击刷新 · 保留阅读位置
         </button>
       )}
+      {meta && meta.preview !== 'pdf' && meta.preview !== 'download' && (
+        <div className="preview-zoom-toolbar" role="group" aria-label="预览缩放">
+          <button aria-label="缩小" disabled={scale <= 0.25} onClick={() => changeScale(scale - 0.25)}>
+            <ZoomOut size={16} />
+          </button>
+          <input
+            aria-label="预览缩放比例"
+            type="range"
+            min="25"
+            max="400"
+            step="5"
+            value={Math.round(scale * 100)}
+            onChange={(e) => changeScale(Number(e.target.value) / 100)}
+          />
+          <button aria-label="放大" disabled={scale >= 4} onClick={() => changeScale(scale + 0.25)}>
+            <ZoomIn size={16} />
+          </button>
+          <button aria-label="重置缩放" title="重置为 100%" onClick={() => changeScale(1)}>
+            {Math.round(scale * 100)}%
+          </button>
+        </div>
+      )}
       <div
         ref={content}
         className={
@@ -173,40 +209,44 @@ export function Preview({
               onPage={() => {}}
             />
           </Suspense>
-        ) : meta?.preview === 'markdown' ? (
-          <article className="markdown document">
-            <Markdown
-              text={text}
-              connection={connection}
-              workspace={workspace}
-              root={root}
-              path={path}
-              onOpen={onOpen}
-            />
-          </article>
-        ) : meta?.preview === 'image' ? (
-          <img
-            className="image-preview"
-            src={fileUrl(connection, workspace, path, meta.version)}
-            alt={path}
-          />
         ) : isHtml ? (
-          <HtmlPreview key={stateKey} text={text} path={path} />
-        ) : meta?.preview === 'text' ? (
-          <Suspense
-            fallback={
-              <pre className="code-preview">
-                <code>{text}</code>
-              </pre>
-            }
-          >
-            <CodePreview text={text} path={path} />
-          </Suspense>
+          <HtmlPreview key={stateKey} text={text} path={path} scale={scale} />
         ) : (
-          <div className="empty-state">
-            <FileText />
-            <p>此文件需要下载后查看</p>
-            <span>{meta?.size.toLocaleString()} bytes</span>
+          <div className="preview-scaled" style={{ zoom: scale, width: contentWidth }}>
+            {meta?.preview === 'markdown' ? (
+              <article className="markdown document">
+                <Markdown
+                  text={text}
+                  connection={connection}
+                  workspace={workspace}
+                  root={root}
+                  path={path}
+                  onOpen={onOpen}
+                />
+              </article>
+            ) : meta?.preview === 'image' ? (
+              <img
+                className="image-preview"
+                src={fileUrl(connection, workspace, path, meta.version)}
+                alt={path}
+              />
+            ) : meta?.preview === 'text' ? (
+              <Suspense
+                fallback={
+                  <pre className="code-preview">
+                    <code>{text}</code>
+                  </pre>
+                }
+              >
+                <CodePreview text={text} path={path} />
+              </Suspense>
+            ) : (
+              <div className="empty-state">
+                <FileText />
+                <p>此文件需要下载后查看</p>
+                <span>{meta?.size.toLocaleString()} bytes</span>
+              </div>
+            )}
           </div>
         )}
       </div>

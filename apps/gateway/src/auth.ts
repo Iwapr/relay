@@ -73,10 +73,17 @@ export class GatewayAuth {
         .prepare('INSERT INTO connections VALUES(?,?,?,?,?)')
         .run(profile.id, profile.ownerId, profile.label, profile.tokenFile, profile.transport.kind);
     this.cleanup();
+    // Preserve valid logins when switching to persistent sessions; never revive expired ones.
+    if (config.sessionTtlSeconds === 0)
+      this.db.prepare('UPDATE sessions SET expires_at=0 WHERE owner_id=?').run(config.owner.id);
+    else
+      this.db
+        .prepare('UPDATE sessions SET expires_at=? WHERE owner_id=? AND expires_at=0')
+        .run(Date.now() + config.sessionTtlSeconds * 1000, config.owner.id);
   }
   cleanup() {
     const now = Date.now();
-    this.db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now);
+    this.db.prepare('DELETE FROM sessions WHERE expires_at > 0 AND expires_at <= ?').run(now);
     this.db.prepare('DELETE FROM login_attempts WHERE reset_at <= ?').run(now);
   }
   private loginTransaction<T>(operation: () => T): T {
@@ -92,7 +99,7 @@ export class GatewayAuth {
   }
   beginLogin(ip: string, now = Date.now()): LoginAttempt | { retryAfter: number } {
     return this.loginTransaction(() => {
-      this.db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now);
+      this.db.prepare('DELETE FROM sessions WHERE expires_at > 0 AND expires_at <= ?').run(now);
       this.db.prepare('DELETE FROM login_attempts WHERE reset_at <= ?').run(now);
       this.db.prepare('DELETE FROM login_blocks WHERE expires_at <= ?').run(now);
       // Abandoned in-flight checks expire after a minute, without becoming password failures.
@@ -148,7 +155,7 @@ export class GatewayAuth {
       ownerId: this.config.owner.id,
       username: this.config.owner.username,
       csrfToken: randomBytes(32).toString('base64url'),
-      expiresAt: Date.now() + this.config.sessionTtlSeconds * 1000,
+      expiresAt: this.config.sessionTtlSeconds === 0 ? 0 : Date.now() + this.config.sessionTtlSeconds * 1000,
     };
     this.db
       .prepare('INSERT INTO sessions VALUES(?,?,?,?)')
@@ -160,7 +167,12 @@ export class GatewayAuth {
     const row = this.db
       .prepare('SELECT owner_id,csrf_token,expires_at FROM sessions WHERE token_hash=?')
       .get(digest(token)) as { owner_id: string; csrf_token: string; expires_at: number } | undefined;
-    if (!row || row.expires_at <= Date.now() || row.owner_id !== this.config.owner.id) return undefined;
+    if (
+      !row ||
+      (row.expires_at !== 0 && row.expires_at <= Date.now()) ||
+      row.owner_id !== this.config.owner.id
+    )
+      return undefined;
     return {
       ownerId: row.owner_id,
       username: this.config.owner.username,

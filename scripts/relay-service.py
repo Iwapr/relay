@@ -106,6 +106,12 @@ def fingerprint(source):
         path = source / name
         if path.exists():
             digest.update(name.encode() + b'\0' + path.read_bytes())
+    gemini = source / '.runtime/shared-providers/agy'
+    if gemini.is_file():
+        digest.update(b'shared-antigravity\0')
+        with gemini.open('rb') as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(chunk)
     return digest.hexdigest()
 
 
@@ -171,15 +177,19 @@ def publish(source_config):
     dependencies = CODE / 'dependencies' / lock_hash / 'node_modules'
     if not dependencies.exists():
         copy_package(modules, dependencies, dependencies=True)
-    version = json.loads((source / 'generated/manifest.json').read_text())['codexVersion']
-    if not re.fullmatch(r'[0-9A-Za-z._-]+', version):
-        raise ValueError('Invalid pinned Codex version')
-    codex = CODE / 'codex' / version
-    if not codex.exists():
-        binary_dir = source / '.runtime/codex' / version
-        if not (binary_dir / 'codex').is_file():
-            raise RuntimeError(f'Pinned Codex binary is missing: {binary_dir}/codex')
-        copy_package(binary_dir, codex)
+    # Updated installations carry Codex alongside the other official npm CLIs.
+    # Keep the old binary layout only for releases not migrated by ./relay update.
+    codex = None
+    if not (modules / '.bin/codex').is_file():
+        version = json.loads((source / 'generated/manifest.json').read_text())['codexVersion']
+        if not re.fullmatch(r'[0-9A-Za-z._-]+', version):
+            raise ValueError('Invalid legacy Codex version')
+        codex = CODE / 'codex' / version
+        if not codex.exists():
+            binary_dir = source / '.runtime/codex' / version
+            if not (binary_dir / 'codex').is_file():
+                raise RuntimeError('Codex is missing; run ./relay update in the source directory')
+            copy_package(binary_dir, codex)
     release.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix='.staging-', dir=release.parent))
     try:
@@ -188,9 +198,20 @@ def publish(source_config):
                             ignore=shutil.ignore_patterns('__pycache__', '.cache'))
         for name in PROGRAM_FILES:
             shutil.copyfile(source / name, staging / name)
+        gemini = source / '.runtime/shared-providers/agy'
+        if gemini.is_file():
+            (staging / 'providers').mkdir()
+            shutil.copyfile(gemini, staging / 'providers/agy')
+            (staging / 'providers/agy').chmod(0o755)
+        if fingerprint(source) != revision:
+            raise RuntimeError('Source changed during publication; no release activated')
         freeze_tree(staging)
         (staging / 'node_modules').symlink_to(dependencies, target_is_directory=True)
-        (staging / 'codex').symlink_to(codex, target_is_directory=True)
+        if codex:
+            (staging / 'codex').symlink_to(codex, target_is_directory=True)
+        else:
+            (staging / 'codex').mkdir(mode=0o755)
+            (staging / 'codex/codex').symlink_to('../node_modules/.bin/codex')
         write_json(staging / 'release.json', {'revision': revision, 'builtAt': time.time()})
         os.rename(staging, release)
         atomic_write(dependency_stamp, lock_hash + '\n')
@@ -278,14 +299,70 @@ def locate_instance(source, name, public_host=None, port_offset=10000):
 
 def ensure_idle(spec):
     config = json.loads(Path(spec['agentConfig']).read_text())
-    database = Path(config['stateDir']) / 'agent.sqlite'
-    if not database.exists():
-        return
-    with sqlite3.connect(database.resolve().as_uri() + '?mode=ro', uri=True) as db:
-        for (data,) in db.execute("SELECT data FROM objects WHERE kind='run'"):
-            run = json.loads(data)
-            if run['state'] not in TERMINAL:
-                raise RuntimeError(f"{spec['user']}: Relay has an active or queued task; finish it before migration")
+    state = Path(config['stateDir'])
+    databases = [state / 'agent.sqlite', *sorted(state.glob('accounts/*/state/agent.sqlite'))]
+    for database in databases:
+        if not database.exists():
+            continue
+        with sqlite3.connect(database.resolve().as_uri() + '?mode=ro', uri=True) as db:
+            for (data,) in db.execute("SELECT data FROM objects WHERE kind='run'"):
+                run = json.loads(data)
+                if run['state'] not in TERMINAL:
+                    raise RuntimeError(f"{spec['user']}: Relay has an active or queued task; finish it before updating")
+
+
+def update_all(check_only=False):
+    """Stage and validate as the source owner, then activate for registered users."""
+    managed_file(HELPER, MARKER)
+    specs = []
+    for path in sorted((CONFIG / 'instances').glob('*.json')):
+        spec = trusted_json(path)
+        if spec.get('user') != path.stem:
+            raise ValueError(f'Instance descriptor username does not match: {path}')
+        account(path.stem)
+        specs.append(spec)
+    if not specs:
+        raise ValueError('No registered Relay users')
+    source_config = trusted_json(CONFIG / 'source.json')
+    source = Path(source_config['source'])
+    if not check_only:
+        for spec in specs:
+            ensure_idle(spec)
+    # No stop/restart during downloads, CLI validation, tests, and publication.
+    with build_lock():
+        user_command(source_config['buildUser'],
+                     [CODE / 'node/bin/node', '--import', 'tsx',
+                      source / 'scripts/update-providers.ts', '--shared',
+                      *(['--check'] if check_only else [])], cwd=source)
+        if check_only:
+            print('Validation complete. No clients or services were changed.')
+            return
+        release = publish(source_config)
+        for spec in specs:
+            check_instance(spec['user'], descriptor_path(spec['user']), release)
+            ensure_idle(spec)
+        # The previous helper does not know how to publish the shared Google CLI.
+        atomic_write(HELPER, Path(__file__).read_text(), 0o755)
+    failures = []
+    for spec in specs:
+        name = spec['user']
+        try:
+            # Recheck immediately before each user's short restart.
+            ensure_idle(spec)
+            unit = f'relay@{name}.service'
+            active = subprocess.run(['systemctl', 'is-active', '--quiet', unit]).returncode == 0
+            if active:
+                subprocess.run(['systemctl', 'restart', unit], check=True)
+                subprocess.run(['systemctl', 'is-active', '--quiet', unit], check=True)
+                print(f'Updated: {name}', flush=True)
+            else:
+                pin_instance(name, release)
+                print(f'Prepared: {name} (kept stopped)', flush=True)
+        except Exception as error:
+            failures.append(f'{name}: {error}')
+    if failures:
+        raise RuntimeError('Some instances were not updated:\n' + '\n'.join(failures))
+    print('All Relay users now use the shared AI clients. Accounts and credentials were preserved.')
 
 
 def managed_file(path, marker):
@@ -492,6 +569,8 @@ def main():
     setup.add_argument('--public-host', help='HTTPS hostname; public port = existing port + offset')
     setup.add_argument('--port-offset', type=int, default=10000)
     sub.add_parser('install-group', help='add relay.service to an existing install without restarting instances')
+    update = sub.add_parser('update', help='update all official AI clients and registered Relay users')
+    update.add_argument('--check', action='store_true', help='validate without activation or restart')
     for command in ('prepare', 'run'):
         sub.add_parser(command).add_argument('user')
     args = parser.parse_args()
@@ -505,6 +584,8 @@ def main():
         install(args)
     elif args.command == 'install-group':
         install_group()
+    elif args.command == 'update':
+        update_all(args.check)
     elif args.command == 'prepare':
         prepare(args.user)
     else:

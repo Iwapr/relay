@@ -6,7 +6,7 @@ if [[ ${1:-} == --help || ${1:-} == -h ]]; then
   cat <<'HELP'
 Relay installer: ./install.sh [--yes] [--foreground] [--host LAN_IP] [--port PORT]
                               [--root PROJECT_ROOT] [--codex ABSOLUTE_EXECUTABLE]
-Installs private Node 24 and the supported Codex CLI when needed, builds Relay,
+Installs private Node 24 and current official AI clients, validates and builds Relay,
 and configures LAN access. Run as an ordinary Linux user. No automatic sudo.
 --yes uses defaults; multiple LAN interfaces still require --host.
 --foreground skips systemd setup. Start with ./relay start after installation.
@@ -62,6 +62,7 @@ fi
 export PATH="$(dirname -- "$relay_node"):$PATH"
 echo '正在安装项目依赖…'
 npm ci --no-audit --no-fund
+node_modules/node/bin/node --import tsx scripts/update-providers.ts
 # The wizard handles build/configuration/startup and propagates all failures.
 if [[ -n ${relay_tmp:-} ]]; then rm -rf -- "$relay_tmp"; trap - EXIT; fi
 exec node_modules/node/bin/node --import tsx scripts/install.ts "$@"

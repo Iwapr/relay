@@ -62,3 +62,34 @@
   display: grid;
   place-items: center;
 }
+.text-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+  max-height: 190px;
+  overflow-y: auto;
+}
+.text-attachment {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+  padding: 8px;
+  border: 1px solid #dce3e8;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.text-attachment span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1;
+}
+.text-attachment small {
+  color: #66756e;
+}
+.text-attachment [role='alert'] {
+  flex-basis: 100%;
+  color: #a02c2c;
+}

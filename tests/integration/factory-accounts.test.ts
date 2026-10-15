@@ -109,13 +109,46 @@ test('Factory account proxy isolates credentials, supports approvals, resumes, q
       (await json(prefix + '/snapshot')).runs.some((r: any) => r.id === second.id && r.state === 'completed'),
     );
     assert.equal((await json(prefix + '/snapshot')).conversations[0].providerSessionId, originalSession);
-    const lines = (
-      await readFile(join(config.stateDir, 'accounts', a.id, 'factory', 'fixture-sessions'), 'utf8')
-    )
+    const lines = (await readFile(join(config.stateDir, 'factory-shared', 'fixture-sessions'), 'utf8'))
       .trim()
       .split('\n');
     assert.equal(lines.length, 2);
     assert.equal(lines[0], lines[1]);
+    // Switching accounts imports the original ID and reads history without duplicating local turns.
+    const shared = await json(other + '/providers/factory/sessions');
+    assert.ok(shared.sessions.some((s: any) => s.id === originalSession));
+    const imported = await json(other + '/providers/factory/sessions/import', { threadId: originalSession });
+    assert.equal(imported.conversation.providerSessionId, originalSession);
+    const otherHistory = await json(other + '/conversations/' + imported.conversation.id);
+    assert.deepEqual(
+      otherHistory.nativeHistory.turns.map((t: any) => t.userText),
+      ['hello', 'again'],
+    );
+    const ownHistory = await json(prefix + '/conversations/' + conversation.id);
+    assert.equal(ownHistory.nativeHistory.turns.length, 0);
+    await json(other + '/providers/factory/credentials', { apiKey: 'test-factory-two' });
+    const { run: switched } = await json(
+      other + '/conversations/' + imported.conversation.id + '/runs',
+      input('from second account'),
+    );
+    await wait(async () =>
+      (await json(other + '/snapshot')).runs.some(
+        (r: any) => r.id === switched.id && r.state === 'completed',
+      ),
+    );
+    assert.equal((await json(other + '/snapshot')).runs[0].accountProfile, b.id);
+    const returned = await json(prefix + '/conversations/' + conversation.id);
+    assert.deepEqual(
+      returned.nativeHistory.turns.map((t: any) => t.userText),
+      ['from second account'],
+    );
+    const sharedIds = (await readFile(join(config.stateDir, 'factory-shared', 'fixture-sessions'), 'utf8'))
+      .trim()
+      .split('\n');
+    assert.equal(new Set(sharedIds).size, 1);
+    await wait(
+      async () => (await call(other + '/providers/factory/credentials', { apiKey: '' })).statusCode === 200,
+    );
     for (const text of ['approval', 'question']) {
       const { run } = await json(url, { ...input(text), permissionMode: 'workspace-write' });
       await wait(async () =>

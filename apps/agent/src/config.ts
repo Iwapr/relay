@@ -10,6 +10,7 @@ export const AgentConfigSchema = z
     accountLabel: z.string().max(60).optional(),
     provider: z.enum(['codex', 'kimi', 'claude', 'antigravity', 'deepseek', 'factory']).optional(),
     factoryExecutable: z.string().optional(),
+    factorySessionHome: z.string().startsWith('/').optional(),
     factoryHome: z.string().startsWith('/').optional(),
     deepseekExecutable: z.string().optional(),
     deepseekHome: z.string().startsWith('/').optional(),

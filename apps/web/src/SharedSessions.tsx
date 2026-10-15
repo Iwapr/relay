@@ -61,7 +61,7 @@ export function SharedSessions({
   close.current = onClose;
   const endpoint =
     base(connection) +
-    (provider !== 'codex' && provider !== 'antigravity'
+    (provider !== 'codex' && provider !== 'antigravity' && provider !== 'factory'
       ? '/snapshot?view=summary'
       : workspaceId
         ? `/workspaces/${workspaceId}/native-sessions`
@@ -79,7 +79,7 @@ export function SharedSessions({
       if (workspaceId && scope === 'all') query.set('scope', 'all');
       const [local, native] = await Promise.allSettled([
         api<Snapshot>(base(connection) + '/snapshot?view=summary', undefined, abort.signal),
-        provider !== 'codex' && provider !== 'antigravity'
+        provider !== 'codex' && provider !== 'antigravity' && provider !== 'factory'
           ? Promise.resolve({ sessions: [] as NativeSessionSummary[], nextCursor: null })
           : api<{ sessions: NativeSessionSummary[]; nextCursor: string | null }>(
               endpoint + (query.size ? '?' + query : ''),
@@ -244,11 +244,13 @@ export function SharedSessions({
         )}
         {!loading && !error && history.length === 0 && !cursor && (
           <p className="shared-session-empty">
-            {provider !== 'codex' && provider !== 'antigravity'
+            {provider !== 'codex' && provider !== 'antigravity' && provider !== 'factory'
               ? '此范围内还没有当前账号的对话。'
               : scope === 'all'
-                ? '暂时没有可访问的 Codex 会话。如需查看其他入口的会话，请确认使用同一台机器、同一系统用户和相同的 Codex 数据目录（CODEX_HOME）。'
-                : '当前项目还没有会话。切换到“全部项目”查看其他项目的 Codex 历史。'}
+                ? provider === 'factory'
+                  ? '暂时没有 Droid 会话。同一 Relay 实例内的 Droid 账号共享此处的聊天记录。'
+                  : '暂时没有可访问的 Codex 会话。如需查看其他入口的会话，请确认使用同一台机器、同一系统用户和相同的 Codex 数据目录（CODEX_HOME）。'
+                : '当前项目还没有会话。切换到“全部项目”查看其他项目的历史。'}
           </p>
         )}
         {!loading && !error && history.length === 0 && cursor && (

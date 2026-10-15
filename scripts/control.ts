@@ -1,4 +1,5 @@
 import { managementHelp } from './management-help.ts';
+import { sharedUpdateCommand } from './update-mode.ts';
 import { spawn } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -48,13 +49,26 @@ async function managedServices() {
   return installed === 2;
 }
 async function main() {
+  if (command === 'update') {
+    const args = process.argv.slice(3);
+    if (args.some((arg) => arg !== '--check')) throw new Error('用法：./relay update [--check]');
+    const shared = await sharedUpdateCommand(root, args);
+    if (shared) {
+      console.log('已识别共享部署：统一更新所有已登记 Relay 用户的 AI 客户端。');
+      await foreground(shared.program, shared.args);
+      return;
+    }
+    const { updateProviders } = await import('./update-providers.ts');
+    await updateProviders(root, undefined, process.argv.includes('--check'));
+    return;
+  }
   if (['help', '--help', '-h'].includes(command)) {
     const mode = (await readFile(join(runtime, 'install-mode'), 'utf8').catch(() => '')).trim();
     console.log(managementHelp(mode === 'systemd' || mode === 'foreground' ? mode : 'unknown'));
     return;
   }
   if (!['start', 'stop', 'restart', 'status', 'logs', 'info', 'service'].includes(command))
-    throw new Error('用法：./relay start|stop|restart|status|logs|info|service|help');
+    throw new Error('用法：./relay start|stop|restart|status|logs|info|service|update|help');
   const config = JSON.parse(
     await readFile(join(runtime, 'gateway.json'), 'utf8').catch(() => {
       throw new Error('请先运行 ./install.sh');

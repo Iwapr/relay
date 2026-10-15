@@ -1,3 +1,5 @@
+import { splitTextAttachments } from './text-attachments';
+
 /** IDE envelopes are presentation metadata; keep the original request available. */
 export function splitIdeContext(text: string): { request: string; context?: string } {
   if (!/^# Context from my IDE setup:\s/m.test(text) || !text.startsWith('# Context from my IDE setup:'))
@@ -10,10 +12,24 @@ export function splitIdeContext(text: string): { request: string; context?: stri
 }
 
 export function UserText({ text }: { text: string }) {
-  const { request, context } = splitIdeContext(text);
+  const attached = splitTextAttachments(text);
+  const { request, context } = splitIdeContext(attached.text);
   return (
     <>
-      {request}
+      {request.length > 16000 ? (
+        <details className="message-context">
+          <summary>长文本（{new Intl.NumberFormat().format(request.length)} 字符）</summary>
+          <pre>{request}</pre>
+        </details>
+      ) : (
+        request
+      )}
+      {attached.files.map((file, index) => (
+        <details className="message-context" key={index}>
+          <summary>附件：{file.name}</summary>
+          <pre>{file.content || '（空文件）'}</pre>
+        </details>
+      ))}
       {context && (
         <details className="message-context">
           <summary>IDE 附带上下文</summary>

@@ -1,8 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+import { packageRuntime } from '../../provider-core/src/runtime.ts';
 import { AppError } from '../../contracts/src/index.ts';
 import type {
   AIProviderAdapter,
@@ -16,8 +16,7 @@ import type {
   StartRunInput,
 } from '../../provider-core/src/index.ts';
 
-export const CLAUDE_VERSION = '2.1.280';
-const require = createRequire(import.meta.url);
+export const CLAUDE_VERSION = packageRuntime('@anthropic-ai/claude-code', 'claude').version;
 type Json = Record<string, any>;
 type Pending = { resolve: (value: any) => void; reject: (error: Error) => void; timer: NodeJS.Timeout };
 
@@ -95,8 +94,7 @@ export class ClaudeAdapter implements AIProviderAdapter {
     env.DISABLE_AUTOUPDATER = '1';
     env.BROWSER = '/bin/true';
     const executable =
-      this.options.executable ??
-      join(dirname(require.resolve('@anthropic-ai/claude-code/package.json')), 'bin/claude.exe');
+      this.options.executable ?? packageRuntime('@anthropic-ai/claude-code', 'claude').executable;
     const child = spawn(
       '/bin/sh',
       [

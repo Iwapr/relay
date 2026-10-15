@@ -1774,3 +1774,27 @@ small {
 .account-add button {
   flex-shrink: 0;
 }
+
+.preview-zoom-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+.preview-zoom-toolbar input[type='range'] {
+  width: 120px;
+  min-width: 0;
+  padding: 0;
+}
+.preview-zoom-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+}
+.preview-scaled {
+  display: flow-root;
+}

@@ -80,6 +80,38 @@ async function fixture(configure?: (provider: MockProvider) => void) {
   };
 }
 
+test('large JSONP chat text reaches the provider unchanged', async () => {
+  const f = await fixture();
+  try {
+    const text =
+      'Request.JSONP.request_map.request_0(' +
+      JSON.stringify({ equip_list: [{ description: '中文\\u7ecd"'.repeat(150000) }] }) +
+      ');';
+    assert.ok(Buffer.byteLength(text) > 1024 * 1024);
+    const response = await f.agent.app.inject({
+      method: 'POST',
+      url: `/conversations/${f.conversation.id}/runs`,
+      headers: f.headers,
+      payload: f.input(text),
+    });
+    assert.equal(response.statusCode, 200, response.body.slice(0, 200));
+    await until(() => f.provider()?.starts.length === 1);
+    assert.equal(f.provider()!.starts[0].text, text);
+    f.provider()!.complete();
+    const reply = await f.agent.app.inject({
+      method: 'POST',
+      url: `/conversations/${f.conversation.id}/reply`,
+      headers: f.headers,
+      payload: f.input(text),
+    });
+    assert.equal(reply.statusCode, 200, reply.body.slice(0, 200));
+    await until(() => f.providers.flatMap((p) => p.starts).length === 2);
+    assert.equal(f.providers.flatMap((p) => p.starts)[1].text, text);
+  } finally {
+    await f.close();
+  }
+});
+
 test('Agent enforces token, identity and durable submission idempotency', async () => {
   const f = await fixture();
   try {
@@ -753,6 +785,37 @@ test('rollback restores files and branches before the turn; preserves original h
     assert.deepEqual(await f.agent.manager.rollback(second.id, input), restored);
     assert.equal(f.run(second.id).restorePoint?.state, 'restored');
     assert.equal(f.agent.store.get('restoreBlocked', f.workspace.id), undefined);
+  } finally {
+    await f.close();
+  }
+});
+
+test('Factory file-only rollback preserves the failed run diagnostic', async () => {
+  const f = await fixture((p) => {
+    p.account.authMode = 'factory-api-key';
+  });
+  f.config.provider = 'factory';
+  try {
+    const filename = path.join(f.project, 'work.txt');
+    await writeFile(filename, 'initial');
+    const run = await f.submit('failed edit');
+    await until(() => f.run(run.id).state === 'running');
+    await writeFile(filename, 'partial edit');
+    const error = 'Factory Droid 未完成任务，请检查账号、模型及工具结果';
+    f.provider()!.emit('run.failed', { state: 'failed', error });
+    await until(
+      () => f.run(run.id).restorePoint?.state === 'ready' && f.provider()!.releases.length === 1,
+    );
+    const plan = await f.agent.manager.previewRollback(run.id);
+    const restored = await f.agent.manager.rollback(run.id, {
+      clientRequestId: randomUUID(),
+      token: plan.token,
+    });
+    assert.equal(await readFile(filename, 'utf8'), 'initial');
+    assert.equal(restored.conversation.providerSessionId, null);
+    assert.equal(f.run(run.id).restorePoint?.state, 'restored');
+    assert.equal(f.run(run.id).state, 'failed');
+    assert.equal(f.run(run.id).error, error);
   } finally {
     await f.close();
   }

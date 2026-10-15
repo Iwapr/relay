@@ -133,6 +133,41 @@ test('PDF citation and reference links navigate to named and explicit destinatio
   await expect(page.locator('.pdf-view [role="alert"]')).toHaveCount(0);
 });
 
+test('SVG renders as an image and file previews remember adjustable zoom', async ({ page }) => {
+  const fixture = JSON.parse(await readFile('.runtime/e2e/fixture.json', 'utf8'));
+  await writeFile(
+    fixture.primary + '/zoom.svg',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300"><rect width="600" height="300" fill="teal"/><script>parent.__svgRan=true</script></svg>',
+  );
+  await writeFile(fixture.primary + '/zoom.txt', 'Zoomable text');
+  await login(page);
+  await openFolder(page, fixture.primary);
+  await openFile(page, 'zoom.svg');
+  const img = page.locator('.image-preview');
+  await expect(img).toBeVisible();
+  await expect
+    .poll(() => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0))
+    .toBe(true);
+  const original = (await img.boundingBox())!.width;
+  await page.getByRole('button', { name: '放大', exact: true }).click();
+  await expect(page.getByRole('button', { name: '重置缩放' })).toHaveText('125%');
+  await expect.poll(async () => (await img.boundingBox())!.width).toBeGreaterThan(original * 1.2);
+  await page.getByLabel('预览缩放比例').fill('400');
+  await expect
+    .poll(() => page.locator('.preview-content').evaluate((el) => el.scrollWidth > el.clientWidth))
+    .toBe(true);
+  expect(await page.evaluate(() => Reflect.get(window, '__svgRan'))).toBeUndefined();
+  await openFile(page, 'zoom.txt');
+  await expect(page.locator('.code-preview')).toContainText('Zoomable text');
+  await expect(page.getByRole('button', { name: '重置缩放' })).toHaveText('100%');
+  await page.getByRole('button', { name: '缩小', exact: true }).click();
+  await expect(page.locator('.preview-scaled')).toHaveCSS('zoom', '0.75');
+  await openFile(page, 'zoom.svg');
+  await expect(page.getByRole('button', { name: '重置缩放' })).toHaveText('400%');
+  await page.getByRole('button', { name: '重置缩放' }).click();
+  await expect.poll(async () => Math.round((await img.boundingBox())!.width)).toBe(Math.round(original));
+});
+
 test('Chinese LaTeX PDF loads bundled font maps and renders Chinese text', async ({ page }) => {
   const fixture = JSON.parse(await readFile('.runtime/e2e/fixture.json', 'utf8'));
   await writeFile(fixture.primary + '/chinese.pdf', await readFile('tests/fixtures/pdf/cjk.pdf'));
@@ -173,6 +208,8 @@ test('HTML previews render styles, offer source, and isolate active content', as
   const frame = page.frameLocator('iframe[title="preview.html 页面预览"]');
   await expect(frame.getByRole('heading')).toHaveText('HTML 页面测试');
   await expect(frame.getByRole('heading')).toHaveCSS('color', 'rgb(12, 34, 56)');
+  await page.getByRole('button', { name: '放大', exact: true }).click();
+  await expect(frame.locator('html')).toHaveCSS('zoom', '1.25');
   await expect(frame.locator('a')).not.toHaveAttribute('href');
   expect(await page.evaluate(() => Reflect.get(window, '__htmlPreviewExecuted'))).toBeUndefined();
   expect(outbound).toEqual([]);
@@ -771,6 +808,45 @@ test('clean new sessions keep controls in the composer and task center groups re
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
 });
 
+test('last selected model survives reopening projects, reload and a new window; unavailable models fall back', async ({
+  page,
+  context,
+}, info) => {
+  const fixture = JSON.parse(await readFile('.runtime/e2e/fixture.json', 'utf8'));
+  let available = true;
+  await context.route('**/providers/codex/models', async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    if (available)
+      body.models.push({
+        ...body.models[0],
+        id: 'remembered-model',
+        displayName: 'Remembered model',
+        isDefault: false,
+      });
+    await route.fulfill({ response, json: body });
+  });
+  await login(page);
+  await openFolder(page, fixture.tasks[info.project.name]);
+  await chatTab(page);
+  await page.getByLabel('模型', { exact: true }).selectOption('remembered-model');
+  await openFolder(page, fixture.secondary);
+  await chatTab(page);
+  await expect(page.getByLabel('模型', { exact: true })).toHaveValue('fixture-model');
+  await openFolder(page, fixture.tasks[info.project.name]);
+  await chatTab(page);
+  await expect(page.getByLabel('模型', { exact: true })).toHaveValue('remembered-model');
+  await page.reload();
+  await expect(page.getByLabel('模型', { exact: true })).toHaveValue('remembered-model');
+  const reopened = await context.newPage();
+  await page.close();
+  await reopened.goto('/');
+  await expect(reopened.getByLabel('模型', { exact: true })).toHaveValue('remembered-model');
+  available = false;
+  await reopened.reload();
+  await expect(reopened.getByLabel('模型', { exact: true })).toHaveValue('fixture-model');
+});
+
 test('project permission survives reconnect and tab recreation without leaking to other projects', async ({
   page,
   context,
@@ -1349,7 +1425,7 @@ test('selecting and pasting images sends actual attachments, preserves them acro
     ctx.fillText('LATEX-SCREENSHOT', 8, 70);
     return canvas.toDataURL('image/png').split(',')[1];
   });
-  const picker = page.getByLabel('图片附件', { exact: true });
+  const picker = page.getByLabel('文件附件', { exact: true });
   await picker.setInputFiles({
     name: '选择图片.png',
     mimeType: 'image/png',
@@ -1415,7 +1491,7 @@ test('failed image uploads remain removable and prevent sending an incomplete me
   await chatTab(page);
   await page.getByRole('button', { name: '新对话', exact: true }).click();
   await page
-    .getByLabel('图片附件', { exact: true })
+    .getByLabel('文件附件', { exact: true })
     .setInputFiles({ name: 'unsafe.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg/>') });
   await expect(page.getByRole('alert').filter({ hasText: '请选择 PNG、JPEG 或 WebP' })).toBeVisible();
   const data = await page.evaluate(() => {
@@ -1430,7 +1506,7 @@ test('failed image uploads remain removable and prevent sending an incomplete me
     }),
   );
   await page
-    .getByLabel('图片附件', { exact: true })
+    .getByLabel('文件附件', { exact: true })
     .setInputFiles({ name: '失败图片.png', mimeType: 'image/png', buffer: Buffer.from(data, 'base64') });
   await expect(page.getByLabel('待发送图片', { exact: true }).getByRole('alert')).toHaveText(
     '图片上传失败（测试）',
@@ -1882,4 +1958,54 @@ test('desktop preview divider resizes both panels and restores the chosen split'
   await page.keyboard.press('End');
   expect((await page.locator('.preview-panel').boundingBox())!.width).toBeGreaterThanOrEqual(279);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+});
+
+test('text file attachments preserve large JSONP across reload and retry, and reject binary files', async ({
+  page,
+}, info) => {
+  const fixture = JSON.parse(await readFile('.runtime/e2e/fixture.json', 'utf8'));
+  await login(page);
+  await openFolder(page, fixture.tasks[info.project.name]);
+  await chatTab(page);
+  await page.getByRole('button', { name: '新对话', exact: true }).click();
+  const picker = page.getByLabel('文件附件', { exact: true });
+  const drafts = page.getByLabel('待发送文件', { exact: true });
+  const text =
+    ' Request.JSONP.request_0(' + JSON.stringify({ value: '中文\\u7ecd"'.repeat(100000) }) + ');\n';
+  await picker.setInputFiles([
+    { name: '装备.json', mimeType: 'application/json', buffer: Buffer.from(text) },
+    { name: 'remove.txt', mimeType: 'text/plain', buffer: Buffer.from('remove me') },
+    { name: 'binary.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\n') },
+  ]);
+  await expect(drafts.getByRole('alert')).toContainText('不是纯文本');
+  await expect(page.getByRole('button', { name: '发送任务', exact: true })).toBeDisabled();
+  await drafts.getByRole('button', { name: '移除文件：binary.pdf', exact: true }).click();
+  await drafts.getByRole('button', { name: '移除文件：remove.txt', exact: true }).click();
+  await expect(page.getByRole('button', { name: '发送任务', exact: true })).toBeEnabled();
+  await page.reload();
+  await expect(drafts).toContainText('装备.json');
+  const submissions: Array<{ clientRequestId: string; text: string }> = [];
+  await page.route('**/conversations/*/runs', async (route) => {
+    submissions.push(route.request().postDataJSON());
+    if (submissions.length === 1)
+      await route.fulfill({
+        status: 503,
+        json: { error: { code: 'test', message: '附件发送失败（测试）' } },
+      });
+    else await route.continue();
+  });
+  await page.getByRole('button', { name: '发送任务', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: '附件发送失败' })).toBeVisible();
+  await expect(drafts).toContainText('装备.json');
+  await page.getByRole('button', { name: '发送任务', exact: true }).click();
+  await expect(drafts).toHaveCount(0);
+  expect(submissions).toHaveLength(2);
+  expect(submissions[0]).toEqual(submissions[1]);
+  const sent = submissions[1].text;
+  expect(JSON.parse(sent.slice(sent.indexOf('\n[') + 1))).toEqual([{ name: '装备.json', content: text }]);
+  await expect(page.getByRole('button', { name: '添加附件', exact: true })).toBeEnabled();
+  await picker.setInputFiles({ name: 'new.txt', mimeType: 'text/plain', buffer: Buffer.from('new draft') });
+  await expect(drafts).toContainText('new.txt');
+  await page.getByRole('button', { name: '新对话', exact: true }).click();
+  await expect(drafts).toHaveCount(0);
 });

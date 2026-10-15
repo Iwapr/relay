@@ -66,7 +66,7 @@ test('Gemini accounts isolate authorization and sessions, persist across restart
     });
     await wait(async () => (await json(prefix + '/providers/antigravity/account')).authenticated);
     assert.equal((await json(other + '/providers/antigravity/account')).authenticated, false);
-    assert.equal((await json(prefix + '/providers/antigravity/quota')).quota.windows.length, 2);
+    assert.equal((await json(prefix + '/providers/antigravity/quota')).quota.windows.length, 3);
     assert.equal((await json(other + '/providers/antigravity/quota')).quota, null);
     assert.equal((await stat(join(config.stateDir, 'accounts', a.id, 'antigravity'))).mode & 0o777, 0o700);
     const { workspace } = await json(prefix + '/workspaces/open', { path: project });
@@ -82,11 +82,11 @@ test('Gemini accounts isolate authorization and sessions, persist across restart
       title: 'Gemini task',
     });
     assert.equal(conversation.providerId, 'antigravity');
-    const submit = async (text: string) =>
+    const submit = async (text: string, model = 'gemini-3.1-pro-high') =>
       json(prefix + '/conversations/' + conversation.id + '/runs', {
         clientRequestId: randomUUID(),
         text,
-        model: 'gemini-3.1-pro-high',
+        model,
         permissionMode: 'workspace-write',
       });
     const { run: denied } = await submit('denied');
@@ -94,7 +94,7 @@ test('Gemini accounts isolate authorization and sessions, persist across restart
       (await json(prefix + '/snapshot')).runs.some((r: any) => r.id === denied.id && r.state === 'failed'),
     );
     assert.match((await json(prefix + '/snapshot')).runs.find((r: any) => r.id === denied.id).error, /审批/);
-    const { run } = await submit('hello');
+    const { run } = await submit('hello', 'claude-opus-5-5-high');
     await wait(async () =>
       (await json(prefix + '/snapshot')).runs.some((r: any) => r.id === run.id && r.state === 'completed'),
     );

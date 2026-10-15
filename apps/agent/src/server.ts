@@ -1,3 +1,4 @@
+import { migrateFactoryHistory } from '../../../packages/provider-factory/src/migrate-history.ts';
 import { geminiSettingsInput } from '../../../packages/provider-gemini/src/settings.ts';
 import Fastify from 'fastify';
 import { z, ZodError } from 'zod';
@@ -35,6 +36,17 @@ export async function buildAgent(
   } = {},
 ) {
   if (process.getuid?.() === 0 && !config.allowRoot) throw new Error('Agent 不允许以 root 运行');
+  if (config.provider === 'factory' && !options.accountChild) {
+    config = {
+      ...config,
+      factorySessionHome: config.factorySessionHome ?? join(config.stateDir, 'factory-shared'),
+    };
+    await migrateFactoryHistory(
+      config.factoryHome ?? join(config.stateDir, 'factory'),
+      config.factorySessionHome!,
+      join(config.stateDir, 'agent.sqlite'),
+    );
+  }
   mkdirSync(config.stateDir, { recursive: true, mode: 0o700 });
   chmodSync(config.stateDir, 0o700);
   const agentIdPath = join(config.stateDir, 'identity');
@@ -61,6 +73,7 @@ export async function buildAgent(
       identity.codexHome,
       ...(config.kimiHome ? [config.kimiHome] : []),
       join(identity.home, '.kimi-code'),
+      ...(config.factorySessionHome ? [config.factorySessionHome] : []),
       ...(config.factoryHome ? [config.factoryHome] : []),
       join(config.stateDir, 'factory'),
       join(homedir(), '.factory'),
@@ -438,7 +451,7 @@ export async function buildAgent(
       events: store.history(id, Number(q.afterSeq) || 0, Math.min(Number(q.limit) || 500, 1000)),
     };
   });
-  app.post('/conversations/:id/runs', async (req) => ({
+  app.post('/conversations/:id/runs', { bodyLimit: Number.MAX_SAFE_INTEGER }, async (req) => ({
     run: await manager.submit(params(req).id, runInput.parse(req.body)),
   }));
   app.post('/conversations/:id/takeover/preview', async (req) => {
@@ -458,7 +471,7 @@ export async function buildAgent(
         .parse(req.body),
     ),
   );
-  app.post('/conversations/:id/reply', async (req) =>
+  app.post('/conversations/:id/reply', { bodyLimit: Number.MAX_SAFE_INTEGER }, async (req) =>
     manager.reply(params(req).id, runInput.parse(req.body)),
   );
   app.post('/runs/:id/cancel', async (req) => ({

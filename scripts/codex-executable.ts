@@ -4,7 +4,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SUPPORTED_CODEX_VERSION } from '../packages/provider-codex/src/protocol.ts';
+import { SUPPORTED_CODEX_VERSION, validateCodexVersion } from '../packages/provider-codex/src/protocol.ts';
+import { optionalPackageRuntime } from '../packages/provider-core/src/runtime.ts';
 
 /** Prefer the deployed executable; never silently use an older global CLI. */
 export async function codexExecutable(options: { explicit?: string; configured?: boolean } = {}) {
@@ -21,6 +22,8 @@ export async function codexExecutable(options: { explicit?: string; configured?:
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
   }
+  const managed = optionalPackageRuntime('@openai/codex', 'codex');
+  if (managed) return managed.executable;
   const local = fileURLToPath(new URL(`../.runtime/codex/${SUPPORTED_CODEX_VERSION}/codex`, import.meta.url));
   try {
     await access(local, constants.X_OK);
@@ -34,9 +37,6 @@ export async function codexExecutable(options: { explicit?: string; configured?:
 
 export async function validateCodexExecutable(executable: string) {
   const { stdout } = await promisify(execFile)(executable, ['--version'], { timeout: 10000 });
-  if (stdout.trim() !== `codex-cli ${SUPPORTED_CODEX_VERSION}`)
-    throw new Error(
-      `Codex 版本不匹配：需要 ${SUPPORTED_CODEX_VERSION}，实际 ${stdout.trim()}。使用 --codex /绝对路径/codex 指定已验证版本。`,
-    );
+  validateCodexVersion(stdout);
   return executable;
 }
