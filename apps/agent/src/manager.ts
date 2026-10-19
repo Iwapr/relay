@@ -1137,9 +1137,9 @@ export class Manager {
       if (!model) throw new AppError('unsupported_feature', '所选模型当前不可用');
       if (run.reasoningEffort && !model.reasoningEfforts.includes(run.reasoningEffort))
         throw new AppError('unsupported_feature', '模型不支持所选推理强度');
-      // Kimi, Droid and Antigravity can continue through other billing pools after one window is exhausted.
+      // Kimi, Claude, Droid and Antigravity can continue through other billing pools after one window is exhausted.
       // Their official harnesses enforce entitlements; quota lookup must not delay or block a prompt.
-      const quota = ['kimi', 'factory', 'antigravity'].includes(this.config.provider ?? '')
+      const quota = ['kimi', 'claude', 'factory', 'antigravity'].includes(this.config.provider ?? '')
         ? null
         : await adapter.getQuota();
       if (

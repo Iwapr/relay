@@ -1523,6 +1523,17 @@ export default function App() {
                         {new Date(quota.updatedAt).toLocaleString()}
                       </small>
                     )}
+                    {selectedProvider === 'claude' && (
+                      <p className="muted">
+                        订阅额度按官方窗口统计，不代表剩余 token 或消息次数。查询结果缓存 30 秒。{' '}
+                        <a href="https://claude.ai/settings/usage" target="_blank" rel="noreferrer">
+                          查看 Claude 官方用量
+                        </a>
+                      </p>
+                    )}
+                    {!!quota?.windows.length && quota.stale && quota.unavailableReason && (
+                      <p className="muted">{quota.unavailableReason} 当前显示上次查询结果。</p>
+                    )}
                     {quota?.extraUsage && (
                       <div className="quota-window">
                         <div>

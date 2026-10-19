@@ -1,3 +1,4 @@
+import { claudeQuota } from './quota.ts';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
@@ -60,7 +61,7 @@ export class ClaudeAdapter implements AIProviderAdapter {
       resume: true,
       models: true,
       reasoning: true,
-      quota: false,
+      quota: true,
       approvals: true,
       userInput: true,
       cancel: true,
@@ -297,7 +298,8 @@ export class ClaudeAdapter implements AIProviderAdapter {
     }
   }
   async getQuota() {
-    return null;
+    if (!(await this.getAccount()).authenticated) return null;
+    return claudeQuota(this.options.home);
   }
   async createSession(input: CreateSessionInput): Promise<ProviderSessionRef> {
     this.session = { id: randomUUID(), resume: false };

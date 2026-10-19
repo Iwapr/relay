@@ -97,7 +97,7 @@ test('Claude streams once, handles tools and images, and lists models without su
     const args = (await f.lines('launches.jsonl')).find((a: string[]) => a.includes('--session-id'));
     assert.equal(args[args.indexOf('--permission-mode') + 1], 'default');
     assert.equal(args[args.indexOf('--effort') + 1], 'high');
-    assert.equal(await f.adapter.getQuota(), null);
+    assert.match((await f.adapter.getQuota())?.unavailableReason ?? '', /登录凭据/);
   } finally {
     await f.close();
   }

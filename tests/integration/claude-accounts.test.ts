@@ -63,7 +63,7 @@ test('Claude accounts isolate authorization and sessions, persist across restart
     await json(prefix + '/providers/claude/login/code', { code: 'TEST-CODE', loginId: challenge.loginId });
     await wait(async () => (await json(prefix + '/providers/claude/account')).authenticated);
     assert.equal((await json(other + '/providers/claude/account')).authenticated, false);
-    assert.equal((await json(prefix + '/providers/claude/quota')).quota, null);
+    assert.match((await json(prefix + '/providers/claude/quota')).quota.unavailableReason, /登录凭据/);
     assert.equal((await json(other + '/providers/claude/quota')).quota, null);
     assert.equal((await stat(join(config.stateDir, 'accounts', a.id, 'claude'))).mode & 0o777, 0o700);
     const { workspace } = await json(prefix + '/workspaces/open', { path: project });
